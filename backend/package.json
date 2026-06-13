@@ -1,0 +1,47 @@
+{
+  "name": "@leads-generator/backend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Backend API and workers for Leads Generation Dashboard",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "test": "vitest run --config vitest.config.ts",
+    "migrate": "node-pg-migrate --envPath .env --migrations-dir migrations --tsconfig tsconfig.json",
+    "migrate:create": "node-pg-migrate create",
+    "start": "node dist/start.js",
+    "worker": "node dist/worker.js",
+    "dev": "tsc -b -w"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.2.0",
+    "@leads-generator/shared": "0.0.0",
+    "@resvg/resvg-js": "2.6.2",
+    "argon2": "0.41.1",
+    "bullmq": "5.34.5",
+    "chrome-launcher": "^1.2.1",
+    "fastify": "^5.8.5",
+    "fastify-plugin": "5.0.1",
+    "ioredis": "5.4.2",
+    "lighthouse": "^13.3.0",
+    "pg": "8.13.1",
+    "satori": "^0.12.1",
+    "sharp": "0.33.5",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.10",
+    "@types/pg": "8.11.10",
+    "@vitest/coverage-v8": "2.1.8",
+    "dotenv": "16.4.7",
+    "fast-check": "3.23.2",
+    "node-pg-migrate": "7.9.0",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  }
+}
