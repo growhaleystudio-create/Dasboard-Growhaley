@@ -38,17 +38,26 @@ import { MasterTemplateRepository } from './repository/master-template-repositor
 import { ContentGenerationJobRepository } from './repository/content-generation-job-repository.js';
 import { ContentGenerationSlideRepository } from './repository/content-generation-slide-repository.js';
 import { AiCallWrapper } from './content/ai-call-wrapper.js';
-import { DefaultSduiPlanner } from './content/sdui-planner.js';
+import { DefaultSduiPlanner } from './content/sdui-planner/index.js';
 import { SatoriRenderer } from './content/satori-renderer.js';
 import { createSduiCarouselWorker } from './content/sdui-carousel-worker.js';
 import { createObjectStorageFromEnv } from './storage/object-storage.js';
 import { DefaultBackgroundImageClient } from './content/background-image-client.js';
 import { UrlSafetyGuardImpl } from './content/url-safety-guard.js';
 
-function startWorker() {
+async function startWorker() {
   const env = loadEnv();
   const dbPool = getPool();
-  const redisClient = createRedisClient(env.REDIS_URL);
+  const useRedisWorkers = env.NODE_ENV !== 'development';
+  const redisClient = useRedisWorkers ? createRedisClient(env.REDIS_URL) : null;
+
+  if (!redisClient) {
+    console.warn('⚠️  Development mode: BullMQ workers are disabled because Redis is not required locally.');
+    console.warn('⚠️  Content generation should run through the backend in-process fallback runner.');
+    console.warn('⚠️  Start the standalone worker only when Redis is available and NODE_ENV is not development.');
+    await dbPool.end();
+    return;
+  }
 
   console.log('Starting BullMQ workers...');
 
@@ -240,14 +249,12 @@ function startWorker() {
     console.log('Shutting down workers...');
     await Promise.all([scanWorker.close(), aiWorker.close(), aiQueue.close()]);
     await dbPool.end();
-    redisClient.disconnect();
+    redisClient?.disconnect();
     process.exit(0);
   }
 }
 
-try {
-  startWorker();
-} catch (error: unknown) {
+void startWorker().catch((error: unknown) => {
   console.error('Error starting worker:', error);
   process.exit(1);
-}
+});

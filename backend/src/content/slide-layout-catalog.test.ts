@@ -24,15 +24,15 @@ const ALL_RATIOS: AspectRatio[] = ['1:1', '4:5', '9:16'];
 describe('DefaultSlideLayoutCatalog.variantsFor', () => {
   const catalog = new DefaultSlideLayoutCatalog();
 
-  it('returns heading-only variant for ["heading"] and each aspect ratio', () => {
+  it('returns cover-centered variant for ["heading"] and each aspect ratio', () => {
     for (const ratio of ALL_RATIOS) {
       const variants = catalog.variantsFor(['heading'], ratio);
       expect(variants.length).toBeGreaterThanOrEqual(1);
-      expect(variants.some((v) => v.id === 'heading-only')).toBe(true);
+      expect(variants.some((v) => v.id === 'cover-centered')).toBe(true);
     }
   });
 
-  it('returns heading-body variant for ["heading","body"] (order should not matter)', () => {
+  it('returns text-traditional variant for ["heading","body"] (order should not matter)', () => {
     for (const ratio of ALL_RATIOS) {
       const variants1 = catalog.variantsFor(['heading', 'body'], ratio);
       const variants2 = catalog.variantsFor(['body', 'heading'], ratio);
@@ -40,43 +40,43 @@ describe('DefaultSlideLayoutCatalog.variantsFor', () => {
       const ids1 = variants1.map((v) => v.id).sort();
       const ids2 = variants2.map((v) => v.id).sort();
       expect(ids1).toEqual(ids2);
-      expect(variants1.some((v) => v.id === 'heading-body')).toBe(true);
+      expect(variants1.some((v) => v.id === 'text-traditional')).toBe(true);
     }
   });
 
-  it('returns heading-body-chart variant for ["heading","body","chart"]', () => {
+  it('returns data-standard variant for ["heading","body","chart"]', () => {
     const variants = catalog.variantsFor(['heading', 'body', 'chart'], '1:1');
-    expect(variants.some((v) => v.id === 'heading-body-chart')).toBe(true);
+    expect(variants.some((v) => v.id === 'data-standard')).toBe(true);
   });
 
-  it('returns mockup-body variant for ["mockup","body"]', () => {
+  it('returns mockup-standard variant for ["mockup","body"]', () => {
     const variants = catalog.variantsFor(['mockup', 'body'], '4:5');
-    expect(variants.some((v) => v.id === 'mockup-body')).toBe(true);
+    expect(variants.some((v) => v.id === 'mockup-standard')).toBe(true);
   });
 
-  it('returns heading-chart variant for ["heading","chart"]', () => {
+  it('returns chart-standard variant for ["heading","chart"]', () => {
     const variants = catalog.variantsFor(['heading', 'chart'], '9:16');
-    expect(variants.some((v) => v.id === 'heading-chart')).toBe(true);
+    expect(variants.some((v) => v.id === 'chart-standard')).toBe(true);
   });
 
-  it('returns heading-body-stat variant for ["heading","body","stat"]', () => {
+  it('returns stat-standard variant for ["heading","body","stat"]', () => {
     const variants = catalog.variantsFor(['heading', 'body', 'stat'], '1:1');
-    expect(variants.some((v) => v.id === 'heading-body-stat')).toBe(true);
+    expect(variants.some((v) => v.id === 'stat-standard')).toBe(true);
   });
 
-  it('returns heading-bullet variant for ["heading","bullet"]', () => {
+  it('returns list-standard variant for ["heading","bullet"]', () => {
     const variants = catalog.variantsFor(['heading', 'bullet'], '4:5');
-    expect(variants.some((v) => v.id === 'heading-bullet')).toBe(true);
+    expect(variants.some((v) => v.id === 'list-standard')).toBe(true);
   });
 
-  it('returns quote-only variant for ["quote"]', () => {
+  it('returns quote-centered variant for ["quote"]', () => {
     const variants = catalog.variantsFor(['quote'], '1:1');
-    expect(variants.some((v) => v.id === 'quote-only')).toBe(true);
+    expect(variants.some((v) => v.id === 'quote-centered')).toBe(true);
   });
 
-  it('returns cta-only variant for ["cta"]', () => {
+  it('returns cta-centered variant for ["cta"]', () => {
     const variants = catalog.variantsFor(['cta'], '9:16');
-    expect(variants.some((v) => v.id === 'cta-only')).toBe(true);
+    expect(variants.some((v) => v.id === 'cta-centered')).toBe(true);
   });
 
   it('falls back to generic-default for an unknown composition', () => {

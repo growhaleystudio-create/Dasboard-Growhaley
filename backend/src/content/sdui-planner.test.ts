@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { getLayoutCatalogItem, type SduiSlide } from '@leads-generator/shared';
-import { DefaultSduiPlanner } from './sdui-planner.js';
-import type { SduiPlannerDeps } from './sdui-planner.js';
+import { DefaultSduiPlanner, ensureExplicitImageRequest } from './sdui-planner/index.js';
+import type { SduiPlannerDeps } from './sdui-planner/index.js';
 import type { AiCallWrapper } from './ai-call-wrapper.js';
 import type { TeamAiSettingsService } from '../auth/team-ai-settings-service.js';
 import { resolveSduiTextLimits } from './sdui-text-guardrails.js';
@@ -51,6 +51,71 @@ function hasMeaningfulSupport(slide: SduiSlide): boolean {
 }
 
 describe('DefaultSduiPlanner image-aware metadata', () => {
+  it('injects the content intelligence bank into the planner prompt', async () => {
+    const response = JSON.stringify({
+      slides: [
+        {
+          slide_number: 1,
+          slide_type: 'cover',
+          container_layout: 'text_dominant',
+          layout_variant_id: 'cover_centered',
+          image_requirement: 'none',
+          typography_scale: 'balanced_classic',
+          nested_groups: {
+            top_meta: [{ type: 'tag', text: 'RISIKO', textTransform: 'uppercase' }],
+            core_content: [{ type: 'header', text: 'Bahaya yang Sering Diabaikan', highlight: 'Bahaya' }],
+            action_footer: [],
+          },
+        },
+      ],
+    });
+    const deps = makeDeps(response);
+    const planner = new DefaultSduiPlanner(deps);
+
+    await planner.plan({
+      teamId: 'team-1',
+      jobId: 'job-1',
+      actorId: 'actor-1',
+      prompt: 'bahaya pornografi untuk rumah tangga, style doodle, sertakan pencegahan efektif',
+      aspectRatio: '1:1',
+      slideCount: 1,
+      maxSlides: 7,
+      tone: 'calm',
+    }, AbortSignal.timeout(30_000));
+
+    const prompt = (deps.wrapper.execute as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]
+      ? ((deps.wrapper.execute as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as unknown)
+      : undefined;
+    expect(prompt).toBeDefined();
+
+    const executeFn = (deps.wrapper.execute as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as undefined | ((apiKey: string) => Promise<string>);
+    expect(executeFn).toBeDefined();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: response } }] }),
+    } as Response);
+
+    if (executeFn) await executeFn('fake-key');
+    const body = JSON.parse(fetchSpy.mock.calls[0]?.[1]?.body as string) as { messages: Array<{ content: string }> };
+    expect(body.messages[0]?.content).toContain('[CREATIVE VARIATION]');
+    expect(body.messages[0]?.content).toContain('variation_id');
+    expect(body.messages[0]?.content).toContain('hasil konten tetap harus terasa sebagai draft baru');
+    expect(body.messages[0]?.content).toContain('[CONTENT INTELLIGENCE BANK]');
+    expect(body.messages[0]?.content).toContain('ATURAN PENGGUNAAN BANK DATASET');
+    expect(body.messages[0]?.content).toContain('Default slide content harus padat');
+    expect(body.messages[0]?.content).toContain('jangan kirim slide content hanya berisi header');
+    expect(body.messages[0]?.content).toContain('Jangan pilih layout text-safe');
+    expect(body.messages[0]?.content).toContain('promptFragment + avoid list');
+    expect(body.messages[0]?.content).toContain('layoutCandidates dari recipe');
+    expect(body.messages[0]?.content).toContain('prioritaskan layout family editorial');
+    expect(body.messages[0]?.content).toContain('WAJIB sertakan 2 sampai 4 komponen image_placeholder');
+    expect(body.messages[0]?.content).toContain('dual_image_comparison');
+    expect(body.messages[0]?.content).toContain('warning_prevention_playbook');
+    expect(body.messages[0]?.content).toContain('doodle_handdrawn');
+    expect(body.messages[0]?.content).toContain('prevention_steps');
+    fetchSpy.mockRestore();
+  });
+
   it('accepts a long descriptive visual-heavy prompt without forcing a minimal-image plan', async () => {
     const longPrompt =
       'Buat carousel 5 slide tentang lampu meja artisan untuk studio kreatif kecil. ' +
@@ -160,7 +225,8 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok');
-    expect(deps.wrapper.execute).toHaveBeenCalledTimes(1);
+    expect(deps.wrapper.execute).toHaveBeenCalled();
+    expect(deps.wrapper.execute).toHaveBeenCalledTimes(2);
     const imageSlides = result.value.slides.filter((slide) =>
       (['top_meta', 'core_content', 'action_footer'] as const).some((group) =>
         slide.nested_groups[group]?.some((component) => component.type === 'image_placeholder'),
@@ -170,8 +236,8 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
     expect(result.value.slides.map((slide) => slide.image_requirement)).toEqual([
       'required',
       'required',
-      'optional',
-      'optional',
+      'required',
+      'required',
       'none',
     ]);
   });
@@ -933,7 +999,39 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok');
-    expect(result.value.slides[0]!.image_requirement).toBe('optional');
+    expect(result.value.slides[0]!.image_requirement).toBe('required');
+  });
+
+  it('upgrades visual-led promo/product decks to several required image slides', () => {
+    const slides: SduiSlide[] = Array.from({ length: 5 }, (_, index) => ({
+      slide_number: index + 1,
+      slide_type: index === 0 ? 'cover' : 'content',
+      container_layout: 'text_dominant',
+      layout_variant_id: index === 0 ? 'cover_centered' : 'text_stack',
+      image_requirement: 'none',
+      layout_source: 'ai_selected',
+      typography_scale: 'balanced_classic',
+      nested_groups: {
+        top_meta: [{ type: 'tag', text: 'PROMO' }],
+        core_content: [
+          { type: 'header', text: index === 0 ? 'Lampu Artisan' : `Detail ${index}` },
+          { type: 'body', text: 'Material premium dan cahaya warm untuk studio kreatif.' },
+        ],
+        action_footer: [],
+      },
+    }));
+
+    const result = ensureExplicitImageRequest(
+      'Carousel promo produk lampu meja artisan, banyak visual lampu dan mood studio',
+      slides,
+    );
+
+    const imageSlides = result.filter((slide) =>
+      (['top_meta', 'core_content', 'action_footer'] as const)
+        .some((group) => (slide.nested_groups[group] ?? []).some((component) => component.type === 'image_placeholder')),
+    );
+    expect(imageSlides).toHaveLength(3);
+    expect(imageSlides.every((slide) => slide.image_requirement === 'required')).toBe(true);
   });
 
   it('adds image_placeholder when visual_layer carries generated artwork for an image prompt', async () => {

@@ -15,7 +15,9 @@
     "migrate:create": "node-pg-migrate create",
     "start": "node dist/start.js",
     "worker": "node dist/worker.js",
-    "dev": "tsc -b -w"
+    "dev": "tsc -b -w",
+    "dev:start": "node --watch dist/start.js",
+    "dev:worker": "node --watch dist/worker.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

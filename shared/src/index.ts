@@ -16,3 +16,5 @@ export * from './connector.js';
 export * from './scan.js';
 export * from './scoring.js';
 export * from './content.js';
+export * from './slide-layout-catalog.js';
+export * from './layout-style-registry.js';

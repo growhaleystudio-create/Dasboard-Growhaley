@@ -100,12 +100,19 @@ function buildContentStyleHint(userPrompt: string, stylePrompt: string | undefin
     ? ` Follow the user's requested image style when present; it overrides any generic style words in the subject description: "${explicitStyle}".`
     : '';
   const fallbackHint =
-    ` If the user did not request a specific visual style, use a clean professional editorial illustration style.`;
+    explicitStyle
+      ? ''
+      : ` If the user did not request a specific visual style, use a clean professional editorial illustration style.`;
+  const doodleHint = /\b(doodle|hand[-\s]?drawn|sketch|line art|marker drawing)\b/i.test(
+    `${userPrompt} ${stylePrompt ?? ''}`,
+  )
+    ? ` Render the image as a true hand-drawn doodle: loose black ink sketch lines, simple playful shapes, minimal flat color accents, white or transparent-feeling negative space. Avoid photorealism, 3D render, stock photo, polished corporate vector art, and generic editorial illustration.`
+    : '';
   const transparencyHint = requestsTransparentBackground(userPrompt, stylePrompt)
     ? ` Use a transparent/no-background cutout composition if supported; keep the subject isolated with alpha transparency.`
     : '';
 
-  return styleHint + fallbackHint + transparencyHint;
+  return styleHint + fallbackHint + doodleHint + transparencyHint;
 }
 
 /**

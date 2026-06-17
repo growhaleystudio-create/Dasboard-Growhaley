@@ -15,7 +15,7 @@
  * Requirements: 1.1, 1.2, 1.3, 1.4, 16.6
  */
 
-import type { BrandKit, BrandKitInput, Result } from '@leads-generator/shared';
+import type { BrandKit, BrandKitInput, BrandTextRole, BrandTypographyRole, Result } from '@leads-generator/shared';
 import { err, ok } from '@leads-generator/shared';
 
 import type { Tx } from '../db/transaction.js';
@@ -31,6 +31,19 @@ import type { ObjectStorage } from '../storage/object-storage.js';
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const HEX_COLOR_REGEX = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/;
+const TYPOGRAPHY_ROLES: BrandTypographyRole[] = [
+  'cover',
+  'header',
+  'body',
+  'tag',
+  'quote',
+  'list',
+  'cta',
+  'card',
+  'stat',
+  'caption',
+  'chrome',
+];
 
 // ---------------------------------------------------------------------------
 // BrandKitService
@@ -132,16 +145,21 @@ export class BrandKitService {
       if (input.chrome.siteUrl === undefined || input.chrome.siteUrl === null) {
         messages.push('Chrome siteUrl is required');
       }
+      if (
+        input.chrome.logoSizePx !== undefined &&
+        (!Number.isInteger(input.chrome.logoSizePx) || input.chrome.logoSizePx < 12 || input.chrome.logoSizePx > 180)
+      ) {
+        messages.push('Chrome logoSizePx must be an integer between 12 and 180');
+      }
     }
 
     // Typography validation (optional): all provided colors must be valid hex,
     // and any referenced font family must exist among the uploaded fonts.
     if (input.typography) {
       const t = input.typography;
+      const roleTypography = t as Partial<Record<BrandTypographyRole, BrandTextRole>>;
       const hexFields: [string, string][] = [
-        ['cover.color', t.cover?.color],
-        ['header.color', t.header?.color],
-        ['body.color', t.body?.color],
+        ...TYPOGRAPHY_ROLES.map((role): [string, string | undefined] => [`${role}.color`, roleTypography[role]?.color]),
         ['highlightColor', t.highlightColor],
         ['background', t.background],
         ['paginationColor', t.paginationColor],
@@ -157,20 +175,14 @@ export class BrandKitService {
         ...(input.fonts ?? []).map((f) => f.family),
         ...(existingKit?.fonts ?? []).map((f) => f.family),
       ]);
-      for (const [role, fam] of [
-        ['cover', t.cover?.fontFamily],
-        ['header', t.header?.fontFamily],
-        ['body', t.body?.fontFamily],
-      ] as const) {
+      for (const role of TYPOGRAPHY_ROLES) {
+        const fam = roleTypography[role]?.fontFamily;
         if (fam && fam.length > 0 && !families.has(fam)) {
           messages.push(`Typography ${role} font "${fam}" is not among the uploaded fonts`);
         }
       }
-      for (const [role, size] of [
-        ['cover', t.cover?.sizePx],
-        ['header', t.header?.sizePx],
-        ['body', t.body?.sizePx],
-      ] as const) {
+      for (const role of TYPOGRAPHY_ROLES) {
+        const size = roleTypography[role]?.sizePx;
         if (size !== undefined && (!Number.isInteger(size) || size < 8 || size > 180)) {
           messages.push(`Typography ${role} size must be an integer between 8 and 180`);
         }

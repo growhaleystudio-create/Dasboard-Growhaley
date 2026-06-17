@@ -375,6 +375,37 @@ describe('ContentGeneratorService.getJob', () => {
     expect(result.value.slides).toHaveLength(0);
   });
 
+  it('returns persisted Hermes workflow artifact in JobView', async () => {
+    const workflow = {
+      version: 1,
+      workflowStage: 'rendered',
+      source: 'auto',
+      outline: [{ slide_number: 1, role: 'cover', headline: 'Cover' }],
+      designSystemSnapshot: {
+        colors: ['#187DB4'],
+        fonts: [],
+        chrome: { logoPlacement: 'none', siteUrl: 'example.com', pageNumberFormat: '{current}/{total}' },
+      },
+      slidePrompts: [{ slide_number: 1, prompt: 'Slide prompt' }],
+      slides: [],
+      caption: { hook: 'Cover', body: 'Body', cta: 'Save', hashtags: ['#carousel'] },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const deps = makeDeps({
+      findByIdResult: makeJobRow({ inputs: { workflow } }),
+      listSlidesResult: [],
+    });
+    const svc = new ContentGeneratorService(deps);
+
+    const result = await svc.getJob('team-1', 'job-1');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('should not reach');
+    expect(result.value.workflow?.workflowStage).toBe('rendered');
+    expect(result.value.workflow?.caption.hashtags).toEqual(['#carousel']);
+  });
+
   it('returns NOT_FOUND when job does not exist for the team', async () => {
     const deps = makeDeps({ findByIdResult: null });
     const svc = new ContentGeneratorService(deps);

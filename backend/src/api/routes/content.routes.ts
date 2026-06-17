@@ -2,8 +2,17 @@ import type { FastifyPluginAsync } from 'fastify';
 import z from 'zod';
 import { randomUUID } from 'crypto';
 import { LAYOUT_VARIANT_IDS } from '@leads-generator/shared';
-import type { AppError, BrandFontInput, BlockType, LayoutVariantId, MasterTemplateRules } from '@leads-generator/shared';
+import type {
+  AppError,
+  BrandFontInput,
+  BlockType,
+  CarouselWorkflowArtifact,
+  MasterTemplateRules,
+  LayoutStylePreference,
+  ImagePreferenceMode,
+} from '@leads-generator/shared';
 import type { GenerateRequest } from '../../content/content-generator-service.js';
+import { buildCarouselWorkflowArtifact } from '../../content/carousel-workflow.js';
 import { withTransaction } from '../../db/transaction.js';
 import { ContentTemplateRepository } from '../../repository/content-template-repository.js';
 import { ContentGenerationRepository } from '../../repository/content-generation-repository.js';
@@ -26,10 +35,8 @@ export interface ContentRoutesDeps {
   masterTemplateService: MasterTemplateService;
   contentGeneratorService: ContentGeneratorService;
   approvedExampleService: ApprovedExampleService;
-  // Planner for preview-planning endpoint
-  planner?: import('../../content/planner.js').Planner;
   // SDUI planner for draft/revise endpoints (Fase 2)
-  sduiPlanner?: import('../../content/sdui-planner.js').SduiPlanner;
+  sduiPlanner?: import('../../content/sdui-planner/index.js').SduiPlanner;
   // Visual Reference (Fase 3)
   visualRefRepo?: import('../../repository/visual-reference-repository.js').VisualReferenceRepository;
   visualDnaExtractor?: import('../../content/visual-dna-extractor.js').VisualDnaExtractor;
@@ -46,14 +53,7 @@ const StyleGuideSchema = z.object({
 
 const TemplateCreateSchema = z.object({
   name: z.string().min(1),
-  type: z.enum([
-    'instagram',
-    'email_marketing',
-    'threads',
-    'linkedin',
-    'facebook',
-    'twitter_x',
-  ]),
+  type: z.enum(['instagram', 'email_marketing', 'threads', 'linkedin', 'facebook', 'twitter_x']),
   styleGuide: StyleGuideSchema.default({}),
   systemPrompt: z.string().default(''),
   referenceImages: z.array(z.string()).optional(),
@@ -63,11 +63,35 @@ const TemplateCreateSchema = z.object({
 // Brand Kit schema: accept JSON body with base64-encoded logo and font bytes
 // ---------------------------------------------------------------------------
 
+const BrandTextRoleSchema = z.object({
+  fontFamily: z.string().default(''),
+  color: z.string(),
+  sizePx: z.number().int().min(8).max(180).optional(),
+});
+
+const ContentTagsSchema = z.array(z.string().trim().min(1).max(48)).max(10).optional();
+
+const ConversationContextSchema = z
+  .array(
+    z.object({
+      role: z.enum(['user', 'assistant']),
+      text: z.string().trim().min(1).max(800),
+      createdAt: z.string().max(64).optional(),
+    }),
+  )
+  .max(10)
+  .refine((messages) => messages.reduce((sum, message) => sum + message.text.length, 0) <= 5000, {
+    message: 'conversationContext is too large',
+  })
+  .optional();
+
 const BrandKitSchema = z.object({
-  logo: z.object({
-    base64: z.string(),
-    contentType: z.string().default('image/png'),
-  }).optional(),
+  logo: z
+    .object({
+      base64: z.string(),
+      contentType: z.string().default('image/png'),
+    })
+    .optional(),
   fonts: z
     .array(
       z.object({
@@ -82,14 +106,23 @@ const BrandKitSchema = z.object({
   colors: z.array(z.string()).min(1),
   chrome: z.object({
     logoPlacement: z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right', 'none']),
+    logoSizePx: z.number().int().min(12).max(180).optional(),
     pageNumberFormat: z.string(),
     siteUrl: z.string(),
   }),
   typography: z
     .object({
-      cover: z.object({ fontFamily: z.string().default(''), color: z.string(), sizePx: z.number().int().min(12).max(180).optional() }).optional(),
-      header: z.object({ fontFamily: z.string().default(''), color: z.string(), sizePx: z.number().int().min(12).max(180).optional() }),
-      body: z.object({ fontFamily: z.string().default(''), color: z.string(), sizePx: z.number().int().min(8).max(96).optional() }),
+      cover: BrandTextRoleSchema.optional(),
+      header: BrandTextRoleSchema,
+      body: BrandTextRoleSchema,
+      tag: BrandTextRoleSchema.optional(),
+      quote: BrandTextRoleSchema.optional(),
+      list: BrandTextRoleSchema.optional(),
+      cta: BrandTextRoleSchema.optional(),
+      card: BrandTextRoleSchema.optional(),
+      stat: BrandTextRoleSchema.optional(),
+      caption: BrandTextRoleSchema.optional(),
+      chrome: BrandTextRoleSchema.optional(),
       highlightColor: z.string(),
       background: z.string(),
       paginationColor: z.string(),
@@ -100,8 +133,24 @@ const BrandKitSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Generate request schema
+// Zod Schemas
 // ---------------------------------------------------------------------------
+
+// Local type alias for layout variant IDs (string-based)
+type LayoutVariantId = string;
+const LAYOUT_STYLE_VALUES = [
+  'auto',
+  'scrapbook',
+  'editorial',
+  'bento',
+  'timeline',
+  'comparison',
+  'ui_mockup',
+  'chart',
+  'seamless',
+  'alternating_contrast',
+] as const satisfies readonly LayoutStylePreference[];
+const IMAGE_PREFERENCE_VALUES = ['auto', 'all_slides_image'] as const satisfies readonly ImagePreferenceMode[];
 
 const SDUI_LAYOUT_VARIANTS = LAYOUT_VARIANT_IDS as readonly [LayoutVariantId, ...LayoutVariantId[]];
 
@@ -111,11 +160,18 @@ const TypographyOverrideSchema = z.object({
   bodySizePx: z.number().int().min(8).max(96).optional(),
 });
 
+const LayoutStyleSchema = z.enum(LAYOUT_STYLE_VALUES).optional();
+const ImagePreferenceSchema = z.enum(IMAGE_PREFERENCE_VALUES).optional();
+
 const GenerateRequestSchema = z.object({
   prompt: z.string().min(1).max(2000),
   aspectRatio: z.enum(['1:1', '4:5', '9:16']).default('1:1'),
   requestedSlideCount: z.number().int().min(1).max(10).optional(),
   typographyOverride: TypographyOverrideSchema.optional(),
+  layoutStyle: LayoutStyleSchema,
+  imagePreference: ImagePreferenceSchema,
+  contentTags: ContentTagsSchema,
+  conversationContext: ConversationContextSchema,
   sduiSlides: z
     .array(
       z.object({
@@ -123,11 +179,31 @@ const GenerateRequestSchema = z.object({
         slide_type: z.enum(['cover', 'content']),
         container_layout: z.enum(['text_dominant', 'split_screen', 'background_overlay']),
         layout_variant_id: z.enum(SDUI_LAYOUT_VARIANTS).optional(),
-        layout_family: z.enum(['cover', 'text', 'checklist', 'quote', 'stat', 'cta', 'image_split', 'image_stack', 'image_focus']).optional(),
+        layout_family: z
+          .enum([
+            'cover',
+            'text',
+            'checklist',
+            'quote',
+            'stat',
+            'cta',
+            'image_split',
+            'image_stack',
+            'image_focus',
+            'cards',
+            'comparison',
+            'multi_image',
+            'editorial',
+          ])
+          .optional(),
         image_requirement: z.enum(['required', 'optional', 'none']).optional(),
-        layout_source: z.enum(['ai_selected', 'worker_adjusted', 'ai_repaired_after_image_failure']).optional(),
+        layout_source: z
+          .enum(['ai_selected', 'worker_adjusted', 'ai_repaired_after_image_failure'])
+          .optional(),
         image_status: z.enum(['not_needed', 'generated', 'provider_failed_repaired']).optional(),
-        typography_scale: z.enum(['editorial_bold', 'balanced_classic', 'information_dense']).optional(),
+        typography_scale: z
+          .enum(['editorial_bold', 'balanced_classic', 'information_dense'])
+          .optional(),
         contentDirection: z.enum(['column', 'row']).optional(),
         nested_groups: z.object({
           top_meta: z.array(z.record(z.unknown())).optional(),
@@ -135,6 +211,14 @@ const GenerateRequestSchema = z.object({
           action_footer: z.array(z.record(z.unknown())).optional(),
         }),
       }),
+    )
+    .optional(),
+  workflow: z
+    .custom<CarouselWorkflowArtifact>(
+      (value) =>
+        typeof value === 'object' &&
+        value !== null &&
+        (value as { version?: unknown }).version === 1,
     )
     .optional(),
   chosenPlan: z
@@ -146,7 +230,17 @@ const GenerateRequestSchema = z.object({
           layoutVariantHint: z.string().optional(),
           blocks: z.array(
             z.object({
-              type: z.enum(['heading', 'body', 'mockup', 'chart', 'quote', 'stat', 'bullet', 'cta', 'image']),
+              type: z.enum([
+                'heading',
+                'body',
+                'mockup',
+                'chart',
+                'quote',
+                'stat',
+                'bullet',
+                'cta',
+                'image',
+              ]),
               text: z.string().optional(),
               chartDataRef: z.string().optional(),
               mockupRef: z.string().optional(),
@@ -206,17 +300,7 @@ const MasterTemplateSchema = z.object({
   brandKitId: z.string().min(1),
   allowedBlocks: z
     .array(
-      z.enum([
-        'heading',
-        'body',
-        'mockup',
-        'chart',
-        'quote',
-        'stat',
-        'bullet',
-        'cta',
-        'image',
-      ]),
+      z.enum(['heading', 'body', 'mockup', 'chart', 'quote', 'stat', 'bullet', 'cta', 'image']),
     )
     .min(1),
   maxSlides: z.number().int().min(1).max(10),
@@ -269,741 +353,961 @@ async function templateRulesOrDefaults(
 // Route plugin
 // ---------------------------------------------------------------------------
 
-export const contentRoutes = (deps: ContentRoutesDeps): FastifyPluginAsync => async (fastify) => {
-  const templatesRepo = new ContentTemplateRepository(deps.pool);
-  const generationsRepo = new ContentGenerationRepository(deps.pool);
+export const contentRoutes =
+  (deps: ContentRoutesDeps): FastifyPluginAsync =>
+  async (fastify) => {
+    const templatesRepo = new ContentTemplateRepository(deps.pool);
+    const generationsRepo = new ContentGenerationRepository(deps.pool);
 
-  // ==========================================================================
-  // Existing template CRUD routes (unchanged)
-  // ==========================================================================
+    // ==========================================================================
+    // Existing template CRUD routes (unchanged)
+    // ==========================================================================
 
-  // 1. Get all templates for a team
-  fastify.get('/templates', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId]
-  }, async (request) => {
-    const params = request.params as { id: string };
-    return await templatesRepo.getForTeam(params.id);
-  });
+    // 1. Get all templates for a team
+    fastify.get(
+      '/templates',
+      {
+        preHandler: [fastify.requireAuth, fastify.requireTeamId],
+      },
+      async (request) => {
+        const params = request.params as { id: string };
+        return await templatesRepo.getForTeam(params.id);
+      },
+    );
 
-  // 2. Create a content template
-  fastify.post('/templates', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('ai.configure')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const parsed = TemplateCreateSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw appError({ code: 'VALIDATION', messages: parsed.error.errors.map(e => e.message) });
-    }
-
-    const input = parsed.data;
-    
-    // Pre-generate template UUID to use in file names
-    const templateId = randomUUID();
-
-    // 1. Process & upload reference images first (network requests outside transaction)
-    const finalUrls: string[] = [];
-    if (input.referenceImages && input.referenceImages.length > 0) {
-      for (const img of input.referenceImages) {
-        try {
-          const finalUrl = await processReferenceImage(img, templateId);
-          finalUrls.push(finalUrl);
-        } catch (err: any) {
-          console.error(`Failed processing reference image for template ${templateId}:`, err);
+    // 2. Create a content template
+    fastify.post(
+      '/templates',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('ai.configure'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+        const parsed = TemplateCreateSchema.safeParse(request.body);
+        if (!parsed.success) {
+          throw appError({
+            code: 'VALIDATION',
+            messages: parsed.error.errors.map((e) => e.message),
+          });
         }
-      }
-    }
 
-    // 2. Save template and reference URLs in a single DB transaction (atomic)
-    const template = await withTransaction(deps.pool, async (tx) => {
-      const txTemplatesRepo = new ContentTemplateRepository(tx);
-      
-      const createdTemplate = await txTemplatesRepo.create(params.id, {
-        id: templateId,
-        name: input.name,
-        type: input.type,
-        styleGuide: input.styleGuide as any,
-        systemPrompt: input.systemPrompt,
-      });
+        const input = parsed.data;
 
-      for (const url of finalUrls) {
-        await txTemplatesRepo.addReferenceImage(templateId, url);
-      }
+        // Pre-generate template UUID to use in file names
+        const templateId = randomUUID();
 
-      return {
-        ...createdTemplate,
-        referenceImages: finalUrls,
-      };
-    });
-
-    return reply.status(201).send(template);
-  });
-
-  // 3. Update a template
-  fastify.put('/templates/:templateId', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('ai.configure')]
-  }, async (request) => {
-    const params = request.params as { id: string; templateId: string };
-    const parsed = TemplateCreateSchema.partial().safeParse(request.body);
-    if (!parsed.success) {
-      throw appError({ code: 'VALIDATION', messages: parsed.error.errors.map(e => e.message) });
-    }
-
-    const input = parsed.data;
-
-    // 1. If reference images are provided, process & upload them first (outside transaction)
-    let finalUrls: string[] | undefined = undefined;
-    if (input.referenceImages !== undefined) {
-      finalUrls = [];
-      for (const img of input.referenceImages) {
-        try {
-          const finalUrl = await processReferenceImage(img, params.templateId);
-          finalUrls.push(finalUrl);
-        } catch (err: any) {
-          console.error(`Failed processing reference image update for template ${params.templateId}:`, err);
-        }
-      }
-    }
-
-    // 2. Perform DB update inside a transaction (atomic)
-    const template = await withTransaction(deps.pool, async (tx) => {
-      const txTemplatesRepo = new ContentTemplateRepository(tx);
-
-      // Check existence first
-      const existing = await txTemplatesRepo.getById(params.id, params.templateId);
-      if (!existing) {
-        return null;
-      }
-
-      const updated = await txTemplatesRepo.update(params.id, params.templateId, {
-        name: input.name,
-        type: input.type,
-        styleGuide: input.styleGuide as any,
-        systemPrompt: input.systemPrompt,
-      });
-
-      if (!updated) {
-        return null;
-      }
-
-      if (finalUrls !== undefined) {
-        await txTemplatesRepo.clearReferenceImages(params.templateId);
-        for (const url of finalUrls) {
-          await txTemplatesRepo.addReferenceImage(params.templateId, url);
-        }
-        updated.referenceImages = finalUrls;
-      } else {
-        // preserve existing references in return value if they weren't updated
-        updated.referenceImages = existing.referenceImages;
-      }
-
-      return updated;
-    });
-
-    if (!template) {
-      throw appError({ code: 'NOT_FOUND', message: 'Template not found' });
-    }
-
-    return template;
-  });
-
-  // 4. Delete a template
-  fastify.delete('/templates/:templateId', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('ai.configure')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string; templateId: string };
-    const deleted = await templatesRepo.delete(params.id, params.templateId);
-    if (!deleted) {
-      throw appError({ code: 'NOT_FOUND', message: 'Template not found' });
-    }
-    return reply.status(204).send();
-  });
-
-  // 5. Generate content — superseded by new carousel generator (Task 17)
-  // This endpoint is disabled pending migration to ContentGeneratorService.trigger.
-  fastify.post('/generate', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('ai.reanalyze')]
-  }, async (_request, reply) => {
-    return reply.status(410).send({ error: 'This endpoint has been superseded by the carousel generator.' });
-  });
-
-  // 6. Get generation history
-  fastify.get('/history', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId]
-  }, async (request) => {
-    const params = request.params as { id: string };
-    return await generationsRepo.getForTeam(params.id);
-  });
-
-  // ==========================================================================
-  // BRAND KIT routes (Task 20.1)
-  // ==========================================================================
-
-  // PUT /brand-kit — save brand kit (JSON with base64 assets); RBAC content.manage
-  fastify.put('/brand-kit', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('content.manage')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const parsed = BrandKitSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw appError({ code: 'VALIDATION', messages: parsed.error.errors.map(e => e.message) });
-    }
-
-    const data = parsed.data;
-
-    // Convert base64 → Buffer when assets are provided.
-    const logo = data.logo
-      ? { bytes: Buffer.from(data.logo.base64, 'base64'), contentType: data.logo.contentType }
-      : undefined;
-    const fontInputs = data.fonts.map((f) => {
-      const fontInput: BrandFontInput = {
-        bytes: Buffer.from(f.base64, 'base64'),
-        family: f.family,
-        format: f.format,
-      };
-      if (f.weight !== undefined) fontInput.weight = f.weight;
-      if (f.style !== undefined) fontInput.style = f.style;
-      return fontInput;
-    });
-
-    const actorId = request.session!.userId;
-    const result = await deps.brandKitService.save(params.id, actorId, {
-      fonts: fontInputs,
-      colors: data.colors,
-      chrome: data.chrome,
-      ...(logo ? { logo } : {}),
-      ...(data.typography ? { typography: data.typography } : {}),
-    });
-
-    if (!result.ok) mapResultError(result.error);
-    return reply.status(200).send(result.value);
-  });
-
-  // GET /brand-kit — get brand kit; requireAuth+requireTeamId (any role can read)
-  fastify.get('/brand-kit', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const result = await deps.brandKitService.get(params.id);
-    if (!result.ok) mapResultError(result.error);
-    return reply.status(200).send(result.value);
-  });
-
-  // ==========================================================================
-  // MASTER TEMPLATE routes (Task 20.1)
-  // ==========================================================================
-
-  // PUT /master-template — save; RBAC content.manage
-  fastify.put('/master-template', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('content.manage')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const parsed = MasterTemplateSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw appError({ code: 'VALIDATION', messages: parsed.error.errors.map(e => e.message) });
-    }
-
-    const actorId = request.session!.userId;
-    const result = await deps.masterTemplateService.save(params.id, actorId, parsed.data);
-
-    if (!result.ok) mapResultError(result.error);
-    return reply.status(200).send(result.value);
-  });
-
-  // GET /master-template — get; requireAuth+requireTeamId
-  fastify.get('/master-template', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const result = await deps.masterTemplateService.get(params.id);
-    if (!result.ok) mapResultError(result.error);
-    return reply.status(200).send(result.value);
-  });
-
-  // GET /master-template/rules — get rules; requireAuth+requireTeamId
-  fastify.get('/master-template/rules', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const result = await deps.masterTemplateService.rules(params.id);
-    if (!result.ok) mapResultError(result.error);
-
-    // Serialize ReadonlySet/ReadonlyMap to plain JSON-serializable structures
-    const rules = result.value;
-    return reply.status(200).send({
-      allowedBlocks: [...rules.allowedBlocks],
-      maxSlides: rules.maxSlides,
-      textLimits: [...rules.textLimits.entries()].map(([blockType, maxChars]) => ({
-        blockType,
-        maxChars,
-      })),
-      aspectRatios: [...rules.aspectRatios],
-      defaultTone: rules.defaultTone,
-      brandKitId: rules.brandKitId,
-    });
-  });
-
-  // ==========================================================================
-  // CAROUSEL PLAN endpoint — return 3 plan options before rendering
-  // ==========================================================================
-
-  // POST /carousel/plan — generate 3 ContentPlan options (text only, no render)
-  fastify.post('/carousel/plan', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('content.generate')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-
-    const PlanPreviewSchema = z.object({
-      prompt: z.string().min(1).max(2000),
-      aspectRatio: z.enum(['1:1', '4:5', '9:16']).default('1:1'),
-      requestedSlideCount: z.number().int().min(1).max(10).optional(),
-    });
-
-    const parsed = PlanPreviewSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw appError({ code: 'VALIDATION', messages: parsed.error.errors.map(e => e.message) });
-    }
-
-    const { prompt, aspectRatio, requestedSlideCount } = parsed.data;
-    const teamId = params.id;
-
-    const rules = await templateRulesOrDefaults(deps.masterTemplateService, teamId);
-
-    // Require planner dep
-    const planner = deps.planner;
-    if (!planner) {
-      throw appError({ code: 'INTERNAL', message: 'Planner not configured' });
-    }
-
-    const actorId = request.session!.userId;
-
-    // Generate 3 plan variants with different style nudges
-    const styleNudges = [
-      'Buat susunan yang informatif dan padat dengan banyak poin detail.',
-      'Buat susunan yang visual dan menarik, fokus pada judul besar dan visual.',
-      'Buat susunan yang simpel dan bersih, slide sedikit tapi pesan kuat.',
-    ];
-
-    const planPromises = styleNudges.map(async (nudge, i) => {
-      const signal = AbortSignal.timeout(30_000);
-      const planInput: import('../../content/planner.js').PlannerInput = {
-        teamId,
-        jobId: `preview-${Date.now()}-${i}`,
-        actorId,
-        prompt: `${prompt}\n\n[Gaya: ${nudge}]`,
-        rules,
-        examples: [],
-      };
-      // Pass the user-requested slide count so AI generates exactly that many
-      if (requestedSlideCount !== undefined) {
-        planInput.requestedSlideCount = Math.min(requestedSlideCount, rules.maxSlides);
-      }
-      const result = await planner.plan(planInput, signal);
-      if (!result.ok) return null;
-      // Clamp to maxSlides in case AI still ignores the constraint
-      const plan = result.value;
-      const limit = requestedSlideCount !== undefined
-        ? Math.min(requestedSlideCount, rules.maxSlides)
-        : rules.maxSlides;
-      if (plan.slides.length > limit) {
-        plan.slides = plan.slides.slice(0, limit);
-      }
-      return plan;
-    });
-
-    const plans = await Promise.all(planPromises);
-
-    // Filter nulls and label each option
-    const labels = ['Informatif & Detail', 'Visual & Menarik', 'Simpel & Fokus'];
-    const options = plans
-      .map((plan, i) =>
-        plan
-          ? {
-              label: labels[i] ?? `Opsi ${i + 1}`,
-              plan,
-              slideCount: plan.slides.length,
-              blockSummary: plan.slides.map((s) => s.blocks.map((b) => b.type).join(', ')),
+        // 1. Process & upload reference images first (network requests outside transaction)
+        const finalUrls: string[] = [];
+        if (input.referenceImages && input.referenceImages.length > 0) {
+          for (const img of input.referenceImages) {
+            try {
+              const finalUrl = await processReferenceImage(img, templateId);
+              finalUrls.push(finalUrl);
+            } catch (err: any) {
+              console.error(`Failed processing reference image for template ${templateId}:`, err);
             }
-          : null,
-      )
-      .filter(Boolean);
+          }
+        }
 
-    if (options.length === 0) {
-      throw appError({ code: 'INTERNAL', message: 'Gagal menghasilkan rencana. Coba lagi.' });
-    }
+        // 2. Save template and reference URLs in a single DB transaction (atomic)
+        const template = await withTransaction(deps.pool, async (tx) => {
+          const txTemplatesRepo = new ContentTemplateRepository(tx);
 
-    return reply.status(200).send({ options, aspectRatio });
-  });
+          const createdTemplate = await txTemplatesRepo.create(params.id, {
+            id: templateId,
+            name: input.name,
+            type: input.type,
+            styleGuide: input.styleGuide as any,
+            systemPrompt: input.systemPrompt,
+          });
 
-  // ==========================================================================
-  // CAROUSEL GENERATE routes (Task 20.2)
-  // ==========================================================================
+          for (const url of finalUrls) {
+            await txTemplatesRepo.addReferenceImage(templateId, url);
+          }
 
-  // POST /carousel/generate — trigger; RBAC content.generate
-  fastify.post('/carousel/generate', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('content.generate')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const parsed = GenerateRequestSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw appError({ code: 'VALIDATION', messages: parsed.error.errors.map(e => e.message) });
-    }
+          return {
+            ...createdTemplate,
+            referenceImages: finalUrls,
+          };
+        });
 
-    const actorId = request.session!.userId;
-
-    // Build request object with strict optional properties (exactOptionalPropertyTypes)
-    const generateReq: GenerateRequest = {
-      prompt: parsed.data.prompt,
-      aspectRatio: parsed.data.aspectRatio,
-    };
-    if (parsed.data.requestedSlideCount !== undefined) {
-      generateReq.requestedSlideCount = parsed.data.requestedSlideCount;
-    }
-    if (parsed.data.chosenPlan !== undefined) {
-      generateReq.chosenPlan = parsed.data.chosenPlan as import('@leads-generator/shared').ContentPlan;
-    }
-    if (parsed.data.sduiSlides !== undefined) {
-      generateReq.sduiSlides = parsed.data.sduiSlides as unknown as import('@leads-generator/shared').SduiSlide[];
-    }
-    if (parsed.data.typographyOverride !== undefined) {
-      generateReq.typographyOverride = parsed.data.typographyOverride;
-    }
-    if (parsed.data.chartData !== undefined) {
-      generateReq.chartData = parsed.data.chartData;
-    }
-    if (parsed.data.mockups !== undefined) {
-      generateReq.mockups = parsed.data.mockups;
-    }
-
-    const result = await deps.contentGeneratorService.trigger(params.id, actorId, generateReq);
-
-    if (!result.ok) mapResultError(result.error);
-    return reply.status(201).send(result.value);
-  });
-
-  // GET /carousel/jobs/:jobId — get job status; requireAuth+requireTeamId
-  fastify.get('/carousel/jobs/:jobId', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId]
-  }, async (request, reply) => {
-    const params = request.params as { id: string; jobId: string };
-    const result = await deps.contentGeneratorService.getJob(params.id, params.jobId);
-
-    if (!result.ok) mapResultError(result.error);
-    return reply.status(200).send(result.value);
-  });
-
-  // ==========================================================================
-  // APPROVED EXAMPLES routes (Task 20.2)
-  // ==========================================================================
-
-  // POST /carousel/jobs/:jobId/approve — approve; RBAC content.manage
-  fastify.post('/carousel/jobs/:jobId/approve', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('content.manage')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string; jobId: string };
-    const actorId = request.session!.userId;
-    const result = await deps.approvedExampleService.approve(params.id, actorId, params.jobId);
-
-    if (!result.ok) mapResultError(result.error);
-    return reply.status(201).send(result.value);
-  });
-
-  // DELETE /carousel/examples/:exampleId/approve — unapprove; RBAC content.manage
-  fastify.delete('/carousel/examples/:exampleId/approve', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('content.manage')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string; exampleId: string };
-    const actorId = request.session!.userId;
-    const result = await deps.approvedExampleService.unapprove(params.id, actorId, params.exampleId);
-
-    if (!result.ok) mapResultError(result.error);
-    return reply.status(204).send();
-  });
-
-  // GET /carousel/examples — list; requireAuth+requireTeamId
-  fastify.get('/carousel/examples', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const result = await deps.approvedExampleService.list(params.id);
-
-    if (!result.ok) mapResultError(result.error);
-    return reply.status(200).send(result.value);
-  });
-
-  // ==========================================================================
-  // FASE 2: Draft → Chat Feedback → Revise → Render
-  // ==========================================================================
-
-  // POST /carousel/draft — AI planners a set of SduiSlides (no rendering).
-  //   Returns the slide draft for the user to review and optionally revise.
-  fastify.post('/carousel/draft', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('content.generate')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const DraftSchema = z.object({
-      prompt: z.string().min(1).max(2000),
-      aspectRatio: z.enum(['1:1', '4:5', '9:16']).default('4:5'),
-      slideCount: z.number().int().min(1).max(10).optional(),
-      referenceMode: z.enum(['no_reference', 'auto_match', 'manual']).default('no_reference'),
-      chosenReferenceId: z.string().optional(),
-      typographyOverride: TypographyOverrideSchema.optional(),
-    });
-    const parsed = DraftSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw appError({ code: 'VALIDATION', messages: parsed.error.errors.map(e => e.message) });
-    }
-    const sduiPlanner = deps.sduiPlanner;
-    if (!sduiPlanner) throw appError({ code: 'INTERNAL', message: 'SDUI planner not configured' });
-
-    const rules = await templateRulesOrDefaults(deps.masterTemplateService, params.id);
-
-    const count = parsed.data.slideCount
-      ? Math.min(parsed.data.slideCount, rules.maxSlides)
-      : rules.maxSlides;
-
-    const signal = AbortSignal.timeout(30_000);
-    const planInput: import('../../content/sdui-planner.js').SduiPlannerInput = {
-      teamId: params.id,
-      jobId: `draft-${Date.now()}`,
-      actorId: request.session!.userId,
-      prompt: parsed.data.prompt,
-      aspectRatio: parsed.data.aspectRatio,
-      slideCount: count,
-      maxSlides: rules.maxSlides,
-      tone: rules.defaultTone,
-      referenceMode: parsed.data.referenceMode,
-      typographyOverride: parsed.data.typographyOverride,
-    };
-
-    // Fase 3: inject reference catalog or chosen reference
-    if (parsed.data.referenceMode !== 'no_reference' && deps.visualRefRepo) {
-      const allRefs = await deps.visualRefRepo.listByTeam(params.id);
-      if (parsed.data.referenceMode === 'auto_match') {
-        planInput.referenceCatalog = allRefs.map((r) => ({ id: r.id, name: r.name, dna: r.dna, tags: r.tags }));
-      } else if (parsed.data.referenceMode === 'manual' && parsed.data.chosenReferenceId) {
-        const chosen = allRefs.find((r) => r.id === parsed.data.chosenReferenceId);
-        if (chosen) planInput.chosenReference = { id: chosen.id, name: chosen.name, dna: chosen.dna };
-      }
-    }
-
-    const planResult = await sduiPlanner.plan(planInput, signal);
-    if (!planResult.ok) {
-      const kind = planResult.error.kind;
-      throw appError({ code: 'INTERNAL', message: `Planning failed: ${kind}` });
-    }
-    return reply.status(200).send({
-      slides: planResult.value.slides,
-      aspectRatio: parsed.data.aspectRatio,
-      chosenReferenceId: planResult.value.chosenReferenceId ?? null,
-    });
-  });
-
-  // POST /carousel/draft/revise — feed user chat feedback to AI; returns updated slides.
-  fastify.post('/carousel/draft/revise', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('content.generate')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-
-    const SduiComponentSchema = z.object({
-      type: z.string(),
-      text: z.string().optional(),
-      highlight: z.string().optional(),
-      label: z.string().optional(),
-      items: z.array(z.string()).optional(),
-      style: z.enum(['primary', 'secondary']).optional(),
-      requires_generation: z.boolean().optional(),
-      asset_type: z.string().optional(),
-      image_object_context: z.string().optional(),
-      imageUrl: z.string().optional(),
-      heightPercent: z.number().optional(),
-      align: z.enum(['left', 'center', 'right']).optional(),
-      verticalAlign: z.enum(['top', 'center', 'bottom']).optional(),
-      textTransform: z.enum(['uppercase', 'none']).optional(),
-    });
-    const SduiSlideSchema = z.object({
-      slide_number: z.number().int().min(1),
-      slide_type: z.enum(['cover', 'content']),
-      container_layout: z.enum(['text_dominant', 'split_screen', 'background_overlay']),
-      layout_variant_id: z.enum(SDUI_LAYOUT_VARIANTS).optional(),
-      layout_family: z.enum(['cover', 'text', 'checklist', 'quote', 'stat', 'cta', 'image_split', 'image_stack', 'image_focus']).optional(),
-      image_requirement: z.enum(['required', 'optional', 'none']).optional(),
-      layout_source: z.enum(['ai_selected', 'worker_adjusted', 'ai_repaired_after_image_failure']).optional(),
-      image_status: z.enum(['not_needed', 'generated', 'provider_failed_repaired']).optional(),
-      typography_scale: z.enum(['editorial_bold', 'balanced_classic', 'information_dense']).optional(),
-      contentDirection: z.enum(['column', 'row']).optional(),
-      nested_groups: z.object({
-        top_meta: z.array(SduiComponentSchema).optional(),
-        core_content: z.array(SduiComponentSchema).optional(),
-        action_footer: z.array(SduiComponentSchema).optional(),
-      }),
-    });
-    const ReviseSchema = z.object({
-      prompt: z.string().min(1).max(2000),
-      aspectRatio: z.enum(['1:1', '4:5', '9:16']).default('4:5'),
-      slides: z.array(SduiSlideSchema).min(1).max(10),
-      feedback: z.string().min(1).max(1000),
-      typographyOverride: TypographyOverrideSchema.optional(),
-    });
-
-    const parsed = ReviseSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw appError({ code: 'VALIDATION', messages: parsed.error.errors.map(e => e.message) });
-    }
-    const sduiPlanner = deps.sduiPlanner;
-    if (!sduiPlanner) throw appError({ code: 'INTERNAL', message: 'SDUI planner not configured' });
-
-    const rules = await templateRulesOrDefaults(deps.masterTemplateService, params.id);
-
-    const signal = AbortSignal.timeout(30_000);
-    const reviseResult = await sduiPlanner.plan(
-      {
-        teamId: params.id,
-        jobId: `revise-${Date.now()}`,
-        actorId: request.session!.userId,
-        prompt: parsed.data.prompt,
-        aspectRatio: parsed.data.aspectRatio,
-        slideCount: parsed.data.slides.length,
-        maxSlides: rules.maxSlides,
-        tone: rules.defaultTone,
-        feedback: parsed.data.feedback,
-        previousSlides: parsed.data.slides as import('@leads-generator/shared').SduiSlide[],
-        typographyOverride: parsed.data.typographyOverride,
+        return reply.status(201).send(template);
       },
-      signal,
     );
-    if (!reviseResult.ok) {
-      throw appError({ code: 'INTERNAL', message: `Revision failed: ${reviseResult.error.kind}` });
-    }
-    return reply.status(200).send({
-      slides: reviseResult.value.slides,
-      aspectRatio: parsed.data.aspectRatio,
-    });
-  });
 
-  // POST /carousel/jobs/:jobId/slides/:slideIndex/regenerate — regen a single slide.
-  fastify.post('/carousel/jobs/:jobId/slides/:slideIndex/regenerate', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('content.generate')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string; jobId: string; slideIndex: string };
-    const sduiPlanner = deps.sduiPlanner;
-    if (!sduiPlanner) throw appError({ code: 'INTERNAL', message: 'SDUI planner not configured' });
-
-    const RegenSchema = z.object({
-      prompt: z.string().min(1).max(2000),
-      aspectRatio: z.enum(['1:1', '4:5', '9:16']).default('4:5'),
-      feedback: z.string().min(1).max(500),
-      totalSlides: z.number().int().min(1).max(10),
-      typographyOverride: TypographyOverrideSchema.optional(),
-    });
-    const parsed = RegenSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw appError({ code: 'VALIDATION', messages: parsed.error.errors.map(e => e.message) });
-    }
-    const rules = await templateRulesOrDefaults(deps.masterTemplateService, params.id);
-
-    const slideIdx = Number(params.slideIndex);
-    const isCover = slideIdx === 0;
-    const specificPrompt =
-      `Generate ONLY ONE slide (slide number ${slideIdx + 1} of ${parsed.data.totalSlides}). ` +
-      `Type: ${isCover ? 'cover' : 'content'}. ` +
-      `The user wants: "${parsed.data.feedback}". ` +
-      `Original topic: ${parsed.data.prompt}`;
-
-    const signal = AbortSignal.timeout(20_000);
-    const result = await sduiPlanner.plan(
+    // 3. Update a template
+    fastify.put(
+      '/templates/:templateId',
       {
-        teamId: params.id,
-        jobId: `regen-${params.jobId}-${slideIdx}`,
-        actorId: request.session!.userId,
-        prompt: specificPrompt,
-        aspectRatio: parsed.data.aspectRatio,
-        slideCount: 1,
-        maxSlides: rules.maxSlides,
-        tone: rules.defaultTone,
-        typographyOverride: parsed.data.typographyOverride,
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('ai.configure'),
+        ],
       },
-      signal,
+      async (request) => {
+        const params = request.params as { id: string; templateId: string };
+        const parsed = TemplateCreateSchema.partial().safeParse(request.body);
+        if (!parsed.success) {
+          throw appError({
+            code: 'VALIDATION',
+            messages: parsed.error.errors.map((e) => e.message),
+          });
+        }
+
+        const input = parsed.data;
+
+        // 1. If reference images are provided, process & upload them first (outside transaction)
+        let finalUrls: string[] | undefined = undefined;
+        if (input.referenceImages !== undefined) {
+          finalUrls = [];
+          for (const img of input.referenceImages) {
+            try {
+              const finalUrl = await processReferenceImage(img, params.templateId);
+              finalUrls.push(finalUrl);
+            } catch (err: any) {
+              console.error(
+                `Failed processing reference image update for template ${params.templateId}:`,
+                err,
+              );
+            }
+          }
+        }
+
+        // 2. Perform DB update inside a transaction (atomic)
+        const template = await withTransaction(deps.pool, async (tx) => {
+          const txTemplatesRepo = new ContentTemplateRepository(tx);
+
+          // Check existence first
+          const existing = await txTemplatesRepo.getById(params.id, params.templateId);
+          if (!existing) {
+            return null;
+          }
+
+          const updated = await txTemplatesRepo.update(params.id, params.templateId, {
+            name: input.name,
+            type: input.type,
+            styleGuide: input.styleGuide as any,
+            systemPrompt: input.systemPrompt,
+          });
+
+          if (!updated) {
+            return null;
+          }
+
+          if (finalUrls !== undefined) {
+            await txTemplatesRepo.clearReferenceImages(params.templateId);
+            for (const url of finalUrls) {
+              await txTemplatesRepo.addReferenceImage(params.templateId, url);
+            }
+            updated.referenceImages = finalUrls;
+          } else {
+            // preserve existing references in return value if they weren't updated
+            updated.referenceImages = existing.referenceImages;
+          }
+
+          return updated;
+        });
+
+        if (!template) {
+          throw appError({ code: 'NOT_FOUND', message: 'Template not found' });
+        }
+
+        return template;
+      },
     );
-    if (!result.ok) {
-      throw appError({ code: 'INTERNAL', message: `Regen failed: ${result.error.kind}` });
-    }
-    // Return just the one slide, renumbered correctly.
-    const newSlide = result.value.slides[0];
-    if (!newSlide) throw appError({ code: 'INTERNAL', message: 'No slide generated' });
-    return reply.status(200).send({ slide: { ...newSlide, slide_number: slideIdx + 1 } });
-  });
 
-  // ==========================================================================
-  // FASE 3: Visual Reference Management
-  // ==========================================================================
+    // 4. Delete a template
+    fastify.delete(
+      '/templates/:templateId',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('ai.configure'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string; templateId: string };
+        const deleted = await templatesRepo.delete(params.id, params.templateId);
+        if (!deleted) {
+          throw appError({ code: 'NOT_FOUND', message: 'Template not found' });
+        }
+        return reply.status(204).send();
+      },
+    );
 
-  // POST /carousel/references — upload + extract DNA
-  fastify.post('/carousel/references', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('content.manage')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const UploadSchema = z.object({
-      name: z.string().min(1).max(100),
-      base64: z.string().min(1),
-      contentType: z.enum(['image/png', 'image/jpeg', 'image/webp']).default('image/png'),
-      tags: z.array(z.string()).default([]),
-    });
-    const parsed = UploadSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw appError({ code: 'VALIDATION', messages: parsed.error.errors.map(e => e.message) });
-    }
-    const { visualRefRepo, visualDnaExtractor, visualRefStorage } = deps;
-    if (!visualRefRepo || !visualDnaExtractor || !visualRefStorage) {
-      throw appError({ code: 'INTERNAL', message: 'Visual reference service not configured' });
-    }
+    // 5. Generate content — superseded by new carousel generator (Task 17)
+    // This endpoint is disabled pending migration to ContentGeneratorService.trigger.
+    fastify.post(
+      '/generate',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('ai.reanalyze'),
+        ],
+      },
+      async (_request, reply) => {
+        return reply
+          .status(410)
+          .send({ error: 'This endpoint has been superseded by the carousel generator.' });
+      },
+    );
 
-    const bytes = Buffer.from(parsed.data.base64, 'base64');
-    if (bytes.length > 5 * 1024 * 1024) {
-      throw appError({ code: 'VALIDATION', messages: ['Image must be ≤ 5 MB'] });
-    }
+    // 6. Get generation history
+    fastify.get(
+      '/history',
+      {
+        preHandler: [fastify.requireAuth, fastify.requireTeamId],
+      },
+      async (request) => {
+        const params = request.params as { id: string };
+        return await generationsRepo.getForTeam(params.id);
+      },
+    );
 
-    // Upload image
-    const key = `visual-references/${randomUUID()}.${parsed.data.contentType.split('/')[1]}`;
-    const uploadResult = await visualRefStorage.upload(params.id, key, bytes, parsed.data.contentType);
-    if (!uploadResult.ok) throw appError({ code: 'INTERNAL', message: 'Upload failed' });
+    // ==========================================================================
+    // BRAND KIT routes (Task 20.1)
+    // ==========================================================================
 
-    // Extract Visual DNA
-    const dna = await visualDnaExtractor.extract(params.id, parsed.data.base64, parsed.data.contentType);
+    // PUT /brand-kit — save brand kit (JSON with base64 assets); RBAC content.manage
+    fastify.put(
+      '/brand-kit',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('content.manage'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+        const parsed = BrandKitSchema.safeParse(request.body);
+        if (!parsed.success) {
+          throw appError({
+            code: 'VALIDATION',
+            messages: parsed.error.errors.map((e) => e.message),
+          });
+        }
 
-    // Save to DB
-    const ref = await visualRefRepo.insert(params.id, {
-      name: parsed.data.name,
-      imageUrl: uploadResult.value,
-      dna,
-      tags: parsed.data.tags,
-    });
+        const data = parsed.data;
 
-    return reply.status(201).send(ref);
-  });
+        // Convert base64 → Buffer when assets are provided.
+        const logo = data.logo
+          ? { bytes: Buffer.from(data.logo.base64, 'base64'), contentType: data.logo.contentType }
+          : undefined;
+        const fontInputs = data.fonts.map((f) => {
+          const fontInput: BrandFontInput = {
+            bytes: Buffer.from(f.base64, 'base64'),
+            family: f.family,
+            format: f.format,
+          };
+          if (f.weight !== undefined) fontInput.weight = f.weight;
+          if (f.style !== undefined) fontInput.style = f.style;
+          return fontInput;
+        });
 
-  // GET /carousel/references — list
-  fastify.get('/carousel/references', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId]
-  }, async (request, reply) => {
-    const params = request.params as { id: string };
-    const { visualRefRepo } = deps;
-    if (!visualRefRepo) throw appError({ code: 'INTERNAL', message: 'Visual reference service not configured' });
-    const refs = await visualRefRepo.listByTeam(params.id);
-    return reply.status(200).send(refs);
-  });
+        const actorId = request.session!.userId;
+        const result = await deps.brandKitService.save(params.id, actorId, {
+          fonts: fontInputs,
+          colors: data.colors,
+          chrome: data.chrome,
+          ...(logo ? { logo } : {}),
+          ...(data.typography ? { typography: data.typography } : {}),
+        });
 
-  // DELETE /carousel/references/:refId — delete
-  fastify.delete('/carousel/references/:refId', {
-    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('content.manage')]
-  }, async (request, reply) => {
-    const params = request.params as { id: string; refId: string };
-    const { visualRefRepo } = deps;
-    if (!visualRefRepo) throw appError({ code: 'INTERNAL', message: 'Visual reference service not configured' });
-    const deleted = await visualRefRepo.delete(params.id, params.refId);
-    if (!deleted) throw appError({ code: 'NOT_FOUND', message: 'Reference not found' });
-    return reply.status(204).send();
-  });
-};
+        if (!result.ok) mapResultError(result.error);
+        return reply.status(200).send(result.value);
+      },
+    );
+
+    // GET /brand-kit — get brand kit; requireAuth+requireTeamId (any role can read)
+    fastify.get(
+      '/brand-kit',
+      {
+        preHandler: [fastify.requireAuth, fastify.requireTeamId],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+        const result = await deps.brandKitService.get(params.id);
+        if (!result.ok) mapResultError(result.error);
+        return reply.status(200).send(result.value);
+      },
+    );
+
+    // ==========================================================================
+    // MASTER TEMPLATE routes (Task 20.1)
+    // ==========================================================================
+
+    // PUT /master-template — save; RBAC content.manage
+    fastify.put(
+      '/master-template',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('content.manage'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+        const parsed = MasterTemplateSchema.safeParse(request.body);
+        if (!parsed.success) {
+          throw appError({
+            code: 'VALIDATION',
+            messages: parsed.error.errors.map((e) => e.message),
+          });
+        }
+
+        const actorId = request.session!.userId;
+        const result = await deps.masterTemplateService.save(params.id, actorId, parsed.data);
+
+        if (!result.ok) mapResultError(result.error);
+        return reply.status(200).send(result.value);
+      },
+    );
+
+    // GET /master-template — get; requireAuth+requireTeamId
+    fastify.get(
+      '/master-template',
+      {
+        preHandler: [fastify.requireAuth, fastify.requireTeamId],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+        const result = await deps.masterTemplateService.get(params.id);
+        if (!result.ok) mapResultError(result.error);
+        return reply.status(200).send(result.value);
+      },
+    );
+
+    // GET /master-template/rules — get rules; requireAuth+requireTeamId
+    fastify.get(
+      '/master-template/rules',
+      {
+        preHandler: [fastify.requireAuth, fastify.requireTeamId],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+        const result = await deps.masterTemplateService.rules(params.id);
+        if (!result.ok) mapResultError(result.error);
+
+        // Serialize ReadonlySet/ReadonlyMap to plain JSON-serializable structures
+        const rules = result.value;
+        return reply.status(200).send({
+          allowedBlocks: [...rules.allowedBlocks],
+          maxSlides: rules.maxSlides,
+          textLimits: [...rules.textLimits.entries()].map(([blockType, maxChars]) => ({
+            blockType,
+            maxChars,
+          })),
+          aspectRatios: [...rules.aspectRatios],
+          defaultTone: rules.defaultTone,
+          brandKitId: rules.brandKitId,
+        });
+      },
+    );
+
+    // ==========================================================================
+    // CAROUSEL GENERATE routes (Task 20.2)
+    // ==========================================================================
+
+    // POST /carousel/generate — trigger; RBAC content.generate
+    fastify.post(
+      '/carousel/generate',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('content.generate'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+        const parsed = GenerateRequestSchema.safeParse(request.body);
+        if (!parsed.success) {
+          throw appError({
+            code: 'VALIDATION',
+            messages: parsed.error.errors.map((e) => e.message),
+          });
+        }
+
+        const actorId = request.session!.userId;
+
+        // Build request object with strict optional properties (exactOptionalPropertyTypes)
+        const generateReq: GenerateRequest = {
+          prompt: parsed.data.prompt,
+          aspectRatio: parsed.data.aspectRatio,
+        };
+        if (parsed.data.requestedSlideCount !== undefined) {
+          generateReq.requestedSlideCount = parsed.data.requestedSlideCount;
+        }
+        if (parsed.data.chosenPlan !== undefined) {
+          generateReq.chosenPlan = parsed.data
+            .chosenPlan as import('@leads-generator/shared').ContentPlan;
+        }
+        if (parsed.data.sduiSlides !== undefined) {
+          generateReq.sduiSlides = parsed.data
+            .sduiSlides as unknown as import('@leads-generator/shared').SduiSlide[];
+        }
+        if (parsed.data.workflow !== undefined) {
+          generateReq.workflow = parsed.data.workflow;
+        }
+        if (parsed.data.typographyOverride !== undefined) {
+          generateReq.typographyOverride = parsed.data.typographyOverride;
+        }
+        if (parsed.data.contentTags !== undefined) {
+          generateReq.contentTags = parsed.data.contentTags;
+        }
+        if (parsed.data.conversationContext !== undefined) {
+          generateReq.conversationContext = parsed.data.conversationContext;
+        }
+        if (parsed.data.layoutStyle !== undefined) {
+          generateReq.layoutStyle = parsed.data.layoutStyle;
+        }
+        if (parsed.data.imagePreference !== undefined) {
+          generateReq.imagePreference = parsed.data.imagePreference;
+        }
+        if (parsed.data.chartData !== undefined) {
+          generateReq.chartData = parsed.data.chartData;
+        }
+        if (parsed.data.mockups !== undefined) {
+          generateReq.mockups = parsed.data.mockups;
+        }
+
+        const result = await deps.contentGeneratorService.trigger(params.id, actorId, generateReq);
+
+        if (!result.ok) mapResultError(result.error);
+        return reply.status(201).send(result.value);
+      },
+    );
+
+    // GET /carousel/jobs/:jobId — get job status; requireAuth+requireTeamId
+    fastify.get(
+      '/carousel/jobs/:jobId',
+      {
+        preHandler: [fastify.requireAuth, fastify.requireTeamId],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string; jobId: string };
+        const result = await deps.contentGeneratorService.getJob(params.id, params.jobId);
+
+        if (!result.ok) mapResultError(result.error);
+        return reply.status(200).send(result.value);
+      },
+    );
+
+    // ==========================================================================
+    // APPROVED EXAMPLES routes (Task 20.2)
+    // ==========================================================================
+
+    // POST /carousel/jobs/:jobId/approve — approve; RBAC content.manage
+    fastify.post(
+      '/carousel/jobs/:jobId/approve',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('content.manage'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string; jobId: string };
+        const actorId = request.session!.userId;
+        const result = await deps.approvedExampleService.approve(params.id, actorId, params.jobId);
+
+        if (!result.ok) mapResultError(result.error);
+        return reply.status(201).send(result.value);
+      },
+    );
+
+    // DELETE /carousel/examples/:exampleId/approve — unapprove; RBAC content.manage
+    fastify.delete(
+      '/carousel/examples/:exampleId/approve',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('content.manage'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string; exampleId: string };
+        const actorId = request.session!.userId;
+        const result = await deps.approvedExampleService.unapprove(
+          params.id,
+          actorId,
+          params.exampleId,
+        );
+
+        if (!result.ok) mapResultError(result.error);
+        return reply.status(204).send();
+      },
+    );
+
+    // GET /carousel/examples — list; requireAuth+requireTeamId
+    fastify.get(
+      '/carousel/examples',
+      {
+        preHandler: [fastify.requireAuth, fastify.requireTeamId],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+        const result = await deps.approvedExampleService.list(params.id);
+
+        if (!result.ok) mapResultError(result.error);
+        return reply.status(200).send(result.value);
+      },
+    );
+
+    // ==========================================================================
+    // FASE 2: Draft → Chat Feedback → Revise → Render
+    // ==========================================================================
+
+    // POST /carousel/draft — AI planners a set of SduiSlides (no rendering).
+    //   Returns the slide draft for the user to review and optionally revise.
+    fastify.post(
+      '/carousel/draft',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('content.generate'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+        const DraftSchema = z.object({
+          prompt: z.string().min(1).max(2000),
+          aspectRatio: z.enum(['1:1', '4:5', '9:16']).default('4:5'),
+          slideCount: z.number().int().min(1).max(10).optional(),
+          referenceMode: z.enum(['no_reference', 'auto_match', 'manual']).default('no_reference'),
+          chosenReferenceId: z.string().optional(),
+          typographyOverride: TypographyOverrideSchema.optional(),
+          layoutStyle: LayoutStyleSchema,
+          imagePreference: ImagePreferenceSchema,
+          contentTags: ContentTagsSchema,
+          conversationContext: ConversationContextSchema,
+        });
+        const parsed = DraftSchema.safeParse(request.body);
+        if (!parsed.success) {
+          throw appError({
+            code: 'VALIDATION',
+            messages: parsed.error.errors.map((e) => e.message),
+          });
+        }
+        const sduiPlanner = deps.sduiPlanner;
+        if (!sduiPlanner)
+          throw appError({ code: 'INTERNAL', message: 'SDUI planner not configured' });
+
+        const rules = await templateRulesOrDefaults(deps.masterTemplateService, params.id);
+
+        const count = parsed.data.slideCount
+          ? Math.min(parsed.data.slideCount, rules.maxSlides)
+          : rules.maxSlides;
+
+        const signal = AbortSignal.timeout(30_000);
+        const planInput: import('../../content/sdui-planner/index.js').SduiPlannerInput = {
+          teamId: params.id,
+          jobId: `draft-${Date.now()}`,
+          actorId: request.session!.userId,
+          prompt: parsed.data.prompt,
+          aspectRatio: parsed.data.aspectRatio,
+          slideCount: count,
+          maxSlides: rules.maxSlides,
+          tone: rules.defaultTone,
+          referenceMode: parsed.data.referenceMode,
+          typographyOverride: parsed.data.typographyOverride,
+          contentTags: parsed.data.contentTags,
+          conversationContext: parsed.data.conversationContext,
+          layoutStyle: parsed.data.layoutStyle,
+          imagePreference: parsed.data.imagePreference,
+        };
+
+        // Fase 3: inject reference catalog or chosen reference
+        if (parsed.data.referenceMode !== 'no_reference' && deps.visualRefRepo) {
+          const allRefs = await deps.visualRefRepo.listByTeam(params.id);
+          if (parsed.data.referenceMode === 'auto_match') {
+            planInput.referenceCatalog = allRefs.map((r) => ({
+              id: r.id,
+              name: r.name,
+              dna: r.dna,
+              tags: r.tags,
+            }));
+          } else if (parsed.data.referenceMode === 'manual' && parsed.data.chosenReferenceId) {
+            const chosen = allRefs.find((r) => r.id === parsed.data.chosenReferenceId);
+            if (chosen)
+              planInput.chosenReference = { id: chosen.id, name: chosen.name, dna: chosen.dna };
+          }
+        }
+
+        const planResult = await sduiPlanner.plan(planInput, signal);
+        if (!planResult.ok) {
+          const kind = planResult.error.kind;
+          throw appError({ code: 'INTERNAL', message: `Planning failed: ${kind}` });
+        }
+        const brandKitResult = await deps.brandKitService.get(params.id);
+        if (!brandKitResult.ok) mapResultError(brandKitResult.error);
+        if (!brandKitResult.value)
+          throw appError({
+            code: 'VALIDATION',
+            messages: ['Brand Kit wajib dikonfigurasi terlebih dahulu'],
+          });
+        const workflow = buildCarouselWorkflowArtifact({
+          prompt: parsed.data.prompt,
+          slides: planResult.value.slides,
+          brandKit: brandKitResult.value,
+          source: 'planning',
+          stage: 'prompts',
+        });
+        return reply.status(200).send({
+          workflow,
+          slides: planResult.value.slides,
+          aspectRatio: parsed.data.aspectRatio,
+          chosenReferenceId: planResult.value.chosenReferenceId ?? null,
+        });
+      },
+    );
+
+    // POST /carousel/draft/revise — feed user chat feedback to AI; returns updated slides.
+    fastify.post(
+      '/carousel/draft/revise',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('content.generate'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+
+        const SduiComponentSchema = z.object({
+          type: z.string(),
+          text: z.string().optional(),
+          highlight: z.string().optional(),
+          label: z.string().optional(),
+          items: z.array(z.string()).optional(),
+          style: z.enum(['primary', 'secondary']).optional(),
+          requires_generation: z.boolean().optional(),
+          asset_type: z.string().optional(),
+          image_object_context: z.string().optional(),
+          imageUrl: z.string().optional(),
+          heightPercent: z.number().optional(),
+          align: z.enum(['left', 'center', 'right']).optional(),
+          verticalAlign: z.enum(['top', 'center', 'bottom']).optional(),
+          textTransform: z.enum(['uppercase', 'none']).optional(),
+        });
+        const SduiSlideSchema = z.object({
+          slide_number: z.number().int().min(1),
+          slide_type: z.enum(['cover', 'content']),
+          container_layout: z.enum(['text_dominant', 'split_screen', 'background_overlay']),
+          layout_variant_id: z.enum(SDUI_LAYOUT_VARIANTS).optional(),
+          layout_family: z
+            .enum([
+              'cover',
+              'text',
+              'checklist',
+              'quote',
+              'stat',
+              'cta',
+              'image_split',
+              'image_stack',
+              'image_focus',
+              'cards',
+              'comparison',
+              'multi_image',
+              'editorial',
+            ])
+            .optional(),
+          layout_style: LayoutStyleSchema,
+          image_preference: ImagePreferenceSchema,
+          image_requirement: z.enum(['required', 'optional', 'none']).optional(),
+          layout_source: z
+            .enum(['ai_selected', 'worker_adjusted', 'ai_repaired_after_image_failure'])
+            .optional(),
+          image_status: z.enum(['not_needed', 'generated', 'provider_failed_repaired']).optional(),
+          typography_scale: z
+            .enum(['editorial_bold', 'balanced_classic', 'information_dense'])
+            .optional(),
+          contentDirection: z.enum(['column', 'row']).optional(),
+          nested_groups: z.object({
+            top_meta: z.array(SduiComponentSchema).optional(),
+            core_content: z.array(SduiComponentSchema).optional(),
+            action_footer: z.array(SduiComponentSchema).optional(),
+          }),
+        });
+        const ReviseSchema = z.object({
+          prompt: z.string().min(1).max(2000),
+          aspectRatio: z.enum(['1:1', '4:5', '9:16']).default('4:5'),
+          slides: z.array(SduiSlideSchema).min(1).max(10),
+          workflow: z
+            .custom<CarouselWorkflowArtifact>(
+              (value) =>
+                typeof value === 'object' &&
+                value !== null &&
+                (value as { version?: unknown }).version === 1,
+            )
+            .optional(),
+          feedback: z.string().min(1).max(1000),
+          typographyOverride: TypographyOverrideSchema.optional(),
+          layoutStyle: LayoutStyleSchema,
+          imagePreference: ImagePreferenceSchema,
+          contentTags: ContentTagsSchema,
+          conversationContext: ConversationContextSchema,
+        });
+
+        const parsed = ReviseSchema.safeParse(request.body);
+        if (!parsed.success) {
+          throw appError({
+            code: 'VALIDATION',
+            messages: parsed.error.errors.map((e) => e.message),
+          });
+        }
+        const sduiPlanner = deps.sduiPlanner;
+        if (!sduiPlanner)
+          throw appError({ code: 'INTERNAL', message: 'SDUI planner not configured' });
+
+        const rules = await templateRulesOrDefaults(deps.masterTemplateService, params.id);
+
+        const signal = AbortSignal.timeout(30_000);
+        const reviseResult = await sduiPlanner.plan(
+          {
+            teamId: params.id,
+            jobId: `revise-${Date.now()}`,
+            actorId: request.session!.userId,
+            prompt: parsed.data.prompt,
+            aspectRatio: parsed.data.aspectRatio,
+            slideCount: parsed.data.slides.length,
+            maxSlides: rules.maxSlides,
+            tone: rules.defaultTone,
+            feedback: parsed.data.feedback,
+            previousSlides: parsed.data.slides as import('@leads-generator/shared').SduiSlide[],
+            typographyOverride: parsed.data.typographyOverride,
+            contentTags: parsed.data.contentTags,
+            conversationContext: parsed.data.conversationContext,
+            layoutStyle: parsed.data.layoutStyle,
+            imagePreference: parsed.data.imagePreference,
+          },
+          signal,
+        );
+        if (!reviseResult.ok) {
+          throw appError({
+            code: 'INTERNAL',
+            message: `Revision failed: ${reviseResult.error.kind}`,
+          });
+        }
+        const brandKitResult = await deps.brandKitService.get(params.id);
+        if (!brandKitResult.ok) mapResultError(brandKitResult.error);
+        if (!brandKitResult.value)
+          throw appError({
+            code: 'VALIDATION',
+            messages: ['Brand Kit wajib dikonfigurasi terlebih dahulu'],
+          });
+        const previousWorkflow =
+          typeof (request.body as { workflow?: unknown }).workflow === 'object' &&
+          (request.body as { workflow?: unknown }).workflow !== null
+            ? (request.body as { workflow: CarouselWorkflowArtifact }).workflow
+            : undefined;
+        const workflow = buildCarouselWorkflowArtifact({
+          prompt: parsed.data.prompt,
+          slides: reviseResult.value.slides,
+          brandKit: brandKitResult.value,
+          source: 'planning',
+          previous: previousWorkflow,
+          stage: 'prompts',
+        });
+        return reply.status(200).send({
+          workflow,
+          slides: reviseResult.value.slides,
+          aspectRatio: parsed.data.aspectRatio,
+        });
+      },
+    );
+
+    // POST /carousel/jobs/:jobId/slides/:slideIndex/regenerate — regen a single slide.
+    fastify.post(
+      '/carousel/jobs/:jobId/slides/:slideIndex/regenerate',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('content.generate'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string; jobId: string; slideIndex: string };
+        const sduiPlanner = deps.sduiPlanner;
+        if (!sduiPlanner)
+          throw appError({ code: 'INTERNAL', message: 'SDUI planner not configured' });
+
+        const RegenSchema = z.object({
+          prompt: z.string().min(1).max(2000),
+          aspectRatio: z.enum(['1:1', '4:5', '9:16']).default('4:5'),
+          feedback: z.string().min(1).max(500),
+          totalSlides: z.number().int().min(1).max(10),
+          typographyOverride: TypographyOverrideSchema.optional(),
+          layoutStyle: LayoutStyleSchema,
+          imagePreference: ImagePreferenceSchema,
+          contentTags: ContentTagsSchema,
+          conversationContext: ConversationContextSchema,
+        });
+        const parsed = RegenSchema.safeParse(request.body);
+        if (!parsed.success) {
+          throw appError({
+            code: 'VALIDATION',
+            messages: parsed.error.errors.map((e) => e.message),
+          });
+        }
+        const rules = await templateRulesOrDefaults(deps.masterTemplateService, params.id);
+
+        const slideIdx = Number(params.slideIndex);
+        const isCover = slideIdx === 0;
+        const specificPrompt =
+          `Generate ONLY ONE slide (slide number ${slideIdx + 1} of ${parsed.data.totalSlides}). ` +
+          `Type: ${isCover ? 'cover' : 'content'}. ` +
+          `The user wants: "${parsed.data.feedback}". ` +
+          `Original topic: ${parsed.data.prompt}`;
+
+        const signal = AbortSignal.timeout(20_000);
+        const result = await sduiPlanner.plan(
+          {
+            teamId: params.id,
+            jobId: `regen-${params.jobId}-${slideIdx}`,
+            actorId: request.session!.userId,
+            prompt: specificPrompt,
+            aspectRatio: parsed.data.aspectRatio,
+            slideCount: 1,
+            maxSlides: rules.maxSlides,
+            tone: rules.defaultTone,
+            typographyOverride: parsed.data.typographyOverride,
+            contentTags: parsed.data.contentTags,
+            conversationContext: parsed.data.conversationContext,
+            layoutStyle: parsed.data.layoutStyle,
+            imagePreference: parsed.data.imagePreference,
+          },
+          signal,
+        );
+        if (!result.ok) {
+          throw appError({ code: 'INTERNAL', message: `Regen failed: ${result.error.kind}` });
+        }
+        // Return just the one slide, renumbered correctly.
+        const newSlide = result.value.slides[0];
+        if (!newSlide) throw appError({ code: 'INTERNAL', message: 'No slide generated' });
+        return reply.status(200).send({ slide: { ...newSlide, slide_number: slideIdx + 1 } });
+      },
+    );
+
+    // ==========================================================================
+    // FASE 3: Visual Reference Management
+    // ==========================================================================
+
+    // POST /carousel/references — upload + extract DNA
+    fastify.post(
+      '/carousel/references',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('content.manage'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+        const UploadSchema = z.object({
+          name: z.string().min(1).max(100),
+          base64: z.string().min(1),
+          contentType: z.enum(['image/png', 'image/jpeg', 'image/webp']).default('image/png'),
+          tags: z.array(z.string()).default([]),
+        });
+        const parsed = UploadSchema.safeParse(request.body);
+        if (!parsed.success) {
+          throw appError({
+            code: 'VALIDATION',
+            messages: parsed.error.errors.map((e) => e.message),
+          });
+        }
+        const { visualRefRepo, visualDnaExtractor, visualRefStorage } = deps;
+        if (!visualRefRepo || !visualDnaExtractor || !visualRefStorage) {
+          throw appError({ code: 'INTERNAL', message: 'Visual reference service not configured' });
+        }
+
+        const bytes = Buffer.from(parsed.data.base64, 'base64');
+        if (bytes.length > 5 * 1024 * 1024) {
+          throw appError({ code: 'VALIDATION', messages: ['Image must be ≤ 5 MB'] });
+        }
+
+        // Upload image
+        const key = `visual-references/${randomUUID()}.${parsed.data.contentType.split('/')[1]}`;
+        const uploadResult = await visualRefStorage.upload(
+          params.id,
+          key,
+          bytes,
+          parsed.data.contentType,
+        );
+        if (!uploadResult.ok) throw appError({ code: 'INTERNAL', message: 'Upload failed' });
+
+        // Extract Visual DNA
+        const dna = await visualDnaExtractor.extract(
+          params.id,
+          parsed.data.base64,
+          parsed.data.contentType,
+        );
+
+        // Save to DB
+        const ref = await visualRefRepo.insert(params.id, {
+          name: parsed.data.name,
+          imageUrl: uploadResult.value,
+          dna,
+          tags: parsed.data.tags,
+        });
+
+        return reply.status(201).send(ref);
+      },
+    );
+
+    // GET /carousel/references — list
+    fastify.get(
+      '/carousel/references',
+      {
+        preHandler: [fastify.requireAuth, fastify.requireTeamId],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string };
+        const { visualRefRepo } = deps;
+        if (!visualRefRepo)
+          throw appError({ code: 'INTERNAL', message: 'Visual reference service not configured' });
+        const refs = await visualRefRepo.listByTeam(params.id);
+        return reply.status(200).send(refs);
+      },
+    );
+
+    // DELETE /carousel/references/:refId — delete
+    fastify.delete(
+      '/carousel/references/:refId',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('content.manage'),
+        ],
+      },
+      async (request, reply) => {
+        const params = request.params as { id: string; refId: string };
+        const { visualRefRepo } = deps;
+        if (!visualRefRepo)
+          throw appError({ code: 'INTERNAL', message: 'Visual reference service not configured' });
+        const deleted = await visualRefRepo.delete(params.id, params.refId);
+        if (!deleted) throw appError({ code: 'NOT_FOUND', message: 'Reference not found' });
+        return reply.status(204).send();
+      },
+    );
+  };
 
 async function processReferenceImage(imageStr: string, templateId: string): Promise<string> {
   if (imageStr.startsWith('data:')) {
@@ -1012,7 +1316,7 @@ async function processReferenceImage(imageStr: string, templateId: string): Prom
     const contentType = match[1]!;
     const base64Data = match[2]!;
     const buffer = Buffer.from(base64Data, 'base64');
-    
+
     // Enforce 1MB file size limit on reference images
     if (buffer.byteLength > 1024 * 1024) {
       throw appError({ code: 'VALIDATION', messages: ['File size exceeds 1MB limit'] });
@@ -1020,7 +1324,7 @@ async function processReferenceImage(imageStr: string, templateId: string): Prom
 
     const ext = contentType.split('/')[1] || 'png';
     const fileName = `ref-${templateId}-${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-    
+
     return await uploadToSupabaseStorage(fileName, buffer, contentType);
   }
   return imageStr;

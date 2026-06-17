@@ -12,7 +12,20 @@
 
 import { Queue } from 'bullmq';
 import { CONTENT_FAILURE_ERROR_CODE, ok, err } from '@leads-generator/shared';
-import type { Result, AspectRatio, ContentPlan, ChartData, FailureReason, JobView, SduiSlide, SduiTypographyOverride } from '@leads-generator/shared';
+import type {
+  Result,
+  AspectRatio,
+  ContentPlan,
+  ChartData,
+  FailureReason,
+  JobView,
+  SduiSlide,
+  SduiTypographyOverride,
+  ContentConversationContextMessage,
+  CarouselWorkflowArtifact,
+  LayoutStylePreference,
+  ImagePreferenceMode,
+} from '@leads-generator/shared';
 import type { AppError } from '@leads-generator/shared';
 
 import type { ContentGenerationJobRepository } from '../repository/content-generation-job-repository.js';
@@ -25,6 +38,13 @@ import type { TeamAiSettingsService } from '../auth/team-ai-settings-service.js'
 // ---------------------------------------------------------------------------
 
 export const CONTENT_GENERATION_QUEUE_NAME = 'content-generation';
+
+/**
+ * A job still `pending` after this long is treated as orphaned and reaped on
+ * the next status read. Set above the worker's own job timeout (180s) so a
+ * live run can record its own terminal status before the lazy reaper fires.
+ */
+const STUCK_JOB_DEADLINE_MS = 240_000;
 
 // ---------------------------------------------------------------------------
 // Public request / response types
@@ -46,6 +66,8 @@ export interface GenerateRequest {
    * When present, the worker renders these EXACTLY and skips re-planning.
    */
   sduiSlides?: SduiSlide[];
+  /** Hermes-style workflow artifact. When present, worker renders its slides and persists workflow state. */
+  workflow?: CarouselWorkflowArtifact;
   /** Chart data payloads keyed by ref string. */
   chartData?: { ref: string; data: ChartData }[];
   /** Mockup asset object URLs keyed by ref string. */
@@ -54,6 +76,14 @@ export interface GenerateRequest {
   images?: { ref: string; objectUrl: string }[];
   /** Per-job text size override from the generator config panel. */
   typographyOverride?: SduiTypographyOverride;
+  /** Visual top-meta tags requested from generator config. */
+  contentTags?: string[];
+  /** Recent chat context from the same browser session/window. */
+  conversationContext?: ContentConversationContextMessage[];
+  /** User-selected high-level layout style for this deck. */
+  layoutStyle?: LayoutStylePreference;
+  /** User-selected image preference mode for this deck. */
+  imagePreference?: ImagePreferenceMode;
 }
 
 /** A slide that failed the precheck for required data. */
@@ -162,10 +192,15 @@ export class ContentGeneratorService {
         requestedSlideCount: req.requestedSlideCount,
         chosenPlan: req.chosenPlan ?? null,
         sduiSlides: req.sduiSlides ?? null,
+        workflow: req.workflow ?? null,
         chartData: req.chartData ?? [],
         mockups: req.mockups ?? [],
         images: req.images ?? [],
         typographyOverride: req.typographyOverride ?? null,
+        contentTags: req.contentTags ?? [],
+        conversationContext: req.conversationContext ?? [],
+        layoutStyle: req.layoutStyle ?? 'auto',
+        imagePreference: req.imagePreference ?? 'auto',
         generationRulesSource: template ? 'master_template' : 'internal_defaults',
       },
     });
@@ -209,14 +244,30 @@ export class ContentGeneratorService {
    * `NOT_FOUND` (uniform not-found, R16.3).
    */
   async getJob(teamId: string, jobId: string): Promise<Result<JobView>> {
-    const job = await this.deps.jobRepo.findById(teamId, jobId);
+    let job = await this.deps.jobRepo.findById(teamId, jobId);
     if (job === null) {
       return err({ code: 'NOT_FOUND', message: `Job ${jobId} tidak ditemukan` } as AppError);
+    }
+
+    // Lazy reaper: a job still `pending` long past the worker's own deadline
+    // was almost certainly orphaned (e.g. the process died mid-run, so no
+    // terminal status was ever written). Mark it failed here so the polling
+    // UI gives up instead of spinning forever.
+    if (job.status === 'pending') {
+      const ageMs = Date.now() - new Date(job.createdAt).getTime();
+      if (ageMs > STUCK_JOB_DEADLINE_MS) {
+        await this.deps.jobRepo.setStatus(teamId, jobId, 'failed', 'timeout');
+        const refreshed = await this.deps.jobRepo.findById(teamId, jobId);
+        if (refreshed !== null) job = refreshed;
+      }
     }
 
     const slides = await this.deps.slideRepo.listSlides(teamId, jobId);
     const layoutAudit = Array.isArray(job.inputs.layoutAudit)
       ? (job.inputs.layoutAudit as JobView['layoutAudit'])
+      : undefined;
+    const workflow = typeof job.inputs.workflow === 'object' && job.inputs.workflow !== null
+      ? (job.inputs.workflow as CarouselWorkflowArtifact)
       : undefined;
 
     const view: JobView = {
@@ -225,6 +276,7 @@ export class ContentGeneratorService {
       ...(job.reason != null ? { reason: job.reason } : {}),
       ...(job.reason != null ? { errorCode: contentErrorCode(job.reason) } : {}),
       ...(layoutAudit ? { layoutAudit } : {}),
+      ...(workflow ? { workflow } : {}),
       slides: slides.map((s) => {
         const slide: JobView['slides'][number] = {
           index: s.index,

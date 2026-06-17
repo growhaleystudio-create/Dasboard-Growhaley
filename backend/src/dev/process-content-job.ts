@@ -10,7 +10,7 @@ import { MasterTemplateRepository } from '../repository/master-template-reposito
 import { ContentGenerationJobRepository } from '../repository/content-generation-job-repository.js';
 import { ContentGenerationSlideRepository } from '../repository/content-generation-slide-repository.js';
 import { AiCallWrapper } from '../content/ai-call-wrapper.js';
-import { DefaultSduiPlanner } from '../content/sdui-planner.js';
+import { DefaultSduiPlanner } from '../content/sdui-planner/index.js';
 import { SatoriRenderer } from '../content/satori-renderer.js';
 import { processSduiCarouselJob } from '../content/sdui-carousel-worker.js';
 import { createObjectStorageFromEnv } from '../storage/object-storage.js';

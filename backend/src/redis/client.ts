@@ -39,6 +39,12 @@ export function createRedisClient(connectionString: string): Redis {
   const options: RedisOptions = {
     maxRetriesPerRequest: null,
     enableReadyCheck: true,
+    // Remote Redis (e.g. Upstash) drops idle connections — keepAlive prevents ETIMEDOUT
+    keepAlive: 5000,
+    connectTimeout: 30000,
+    // Reconnect with backoff so BullMQ worker recovers automatically after a drop
+    retryStrategy: (times: number) => Math.min(times * 300, 5000),
+    reconnectOnError: () => true,
   };
   const client = new Redis(connectionString, options);
   client.on('error', (error) => {

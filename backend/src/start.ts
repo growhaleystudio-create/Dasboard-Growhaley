@@ -59,8 +59,7 @@ import { ContentGeneratorService } from './content/content-generator-service.js'
 import { ApprovedExampleService } from './content/approved-example-service.js';
 import { createObjectStorageFromEnv } from './storage/object-storage.js';
 import { CONTENT_GENERATION_QUEUE_NAME } from './content/content-generator-service.js';
-import { DefaultPlanner } from './content/planner.js';
-import { DefaultSduiPlanner } from './content/sdui-planner.js';
+import { DefaultSduiPlanner } from './content/sdui-planner/index.js';
 import { VisualDnaExtractor } from './content/visual-dna-extractor.js';
 import { VisualReferenceRepository } from './repository/visual-reference-repository.js';
 import { AiCallWrapper } from './content/ai-call-wrapper.js';
@@ -264,15 +263,10 @@ async function start() {
     auditRepo,
   );
 
-  // Planner for preview-planning endpoint
   const aiCallWrapper = new AiCallWrapper(
     { settings: teamAiSettings, budget: aiBudget, callLog: aiCallLogRepo, audit: auditRepo },
     dbPool,
   );
-  const carouselPlanner = new DefaultPlanner({
-    wrapper: aiCallWrapper,
-    settings: teamAiSettings,
-  });
   const sduiPlanner = new DefaultSduiPlanner({
     wrapper: aiCallWrapper,
     settings: teamAiSettings,
@@ -360,7 +354,6 @@ async function start() {
       masterTemplateService,
       contentGeneratorService,
       approvedExampleService,
-      planner: carouselPlanner,
       sduiPlanner,
       visualRefRepo,
       visualDnaExtractor,

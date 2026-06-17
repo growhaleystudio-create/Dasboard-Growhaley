@@ -12,11 +12,44 @@
 
 import type { AspectRatio } from '@leads-generator/shared';
 
-// Map our AspectRatio to mirava supported ratios
-const RATIO_MAP: Record<AspectRatio, string> = {
-  '1:1': '1:1',
-  '4:5': '4:5',
-  '9:16': '9:16',
+type MiravaRatio = '1:1' | '2:3' | '3:2' | '4:5' | '16:9' | '9:16';
+
+interface MiravaModelCapabilities {
+  ratios: readonly MiravaRatio[];
+  qualities: readonly string[];
+  styles: readonly string[];
+}
+
+const DEFAULT_CAPABILITIES: MiravaModelCapabilities = {
+  ratios: ['1:1', '4:5', '9:16'],
+  qualities: ['1K'],
+  styles: [],
+};
+
+const MIRAVA_MODEL_CAPABILITIES: Record<string, MiravaModelCapabilities> = {
+  'nano-banana-2': {
+    ratios: ['1:1', '16:9', '9:16'],
+    qualities: ['1K', '2K', '4K'],
+    styles: ['anime'],
+  },
+  'gpt-image-2': {
+    ratios: ['1:1', '2:3', '3:2', '16:9', '9:16'],
+    qualities: ['low', 'medium'],
+    styles: ['dynamic'],
+  },
+};
+
+const MODEL_RATIO_MAP: Record<string, Partial<Record<AspectRatio, MiravaRatio>>> = {
+  'nano-banana-2': {
+    '1:1': '1:1',
+    '4:5': '9:16',
+    '9:16': '9:16',
+  },
+  'gpt-image-2': {
+    '1:1': '1:1',
+    '4:5': '2:3',
+    '9:16': '9:16',
+  },
 };
 
 interface GenerateResponse {
@@ -34,14 +67,34 @@ interface StatusResponse {
   error?: string;
 }
 
+function getMiravaCapabilities(modelId: string): MiravaModelCapabilities {
+  return MIRAVA_MODEL_CAPABILITIES[modelId] ?? DEFAULT_CAPABILITIES;
+}
+
+export function getMiravaRatio(modelId: string, aspectRatio: AspectRatio): MiravaRatio {
+  const direct = MODEL_RATIO_MAP[modelId]?.[aspectRatio];
+  if (direct) return direct;
+
+  const fallback = aspectRatio as MiravaRatio;
+  const supported = getMiravaCapabilities(modelId).ratios;
+  if (supported.includes(fallback)) return fallback;
+  return supported[0] ?? '1:1';
+}
+
 /** Get the correct quality value for a given model_id. */
-function getQuality(modelId: string): string {
-  // nano-banana-2, flux-pro-2.0, ideogram-v3.0, lucid-origin, seedream-4.5, recraft-v4
-  // use '1K', '2K', '4K' as quality. GPT models use 'low'/'medium'.
-  if (modelId.startsWith('gpt-image')) return 'low';
-  if (modelId === 'nano-banana-2') return '2K';
-  // Default for others (no quality param needed)
-  return '1K';
+export function getMiravaQuality(modelId: string): string {
+  const qualities = getMiravaCapabilities(modelId).qualities;
+  if (qualities.includes('2K')) return '2K';
+  if (qualities.includes('medium')) return 'medium';
+  return qualities[0] ?? '1K';
+}
+
+export function getMiravaStyle(modelId: string, prompt: string): string | undefined {
+  const lower = prompt.toLowerCase();
+  const styles = getMiravaCapabilities(modelId).styles;
+  if (modelId === 'gpt-image-2' && styles.includes('dynamic')) return 'dynamic';
+  if (lower.includes('anime') && styles.includes('anime')) return 'anime';
+  return undefined;
 }
 
 /** Generate an image via mirava, poll until done, return PNG Buffer. */
@@ -56,16 +109,19 @@ export async function generateMiravaImage(
   const base = baseUrl.replace(/\/+$/, '');
 
   // Step 1: Submit generation
+  const style = getMiravaStyle(modelId, prompt);
+  const body: Record<string, unknown> = {
+    model_id: modelId,
+    prompt,
+    ratio: getMiravaRatio(modelId, aspectRatio),
+    quality: getMiravaQuality(modelId),
+  };
+  if (style) body.style = style;
+
   const genRes = await fetch(`${base}/api/public/v1/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model_id: modelId,
-      prompt,
-      ratio: RATIO_MAP[aspectRatio],
-      quality: getQuality(modelId),
-      style: 'illustration',
-    }),
+    body: JSON.stringify(body),
     signal,
   });
 

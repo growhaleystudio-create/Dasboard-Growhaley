@@ -1,20 +1,19 @@
-import { getLayoutCatalogItem } from '@leads-generator/shared';
 import type {
-  LayoutCatalogItem,
   SduiComponent,
   SduiLayoutTextLimits,
   SduiSlide,
   SduiTypographyOverride,
 } from '@leads-generator/shared';
+import { getTextLimitsForVariant, layoutFamilyForVariant } from './layout-migration.js';
 
 const DEFAULT_TEXT_LIMITS: SduiLayoutTextLimits = {
   tag: 16,
-  header: 40,
-  body: 110,
-  quote: 90,
-  ctaLabel: 24,
-  checklistItem: 42,
-  checklistItems: 4,
+  header: 60,
+  body: 220,
+  quote: 150,
+  ctaLabel: 28,
+  checklistItem: 65,
+  checklistItems: 5,
 };
 
 const BASELINE_TEXT_SIZE = {
@@ -48,13 +47,22 @@ function scaledLimit(value: number, scale: number, min: number): number {
   return Math.max(min, Math.round(value * scale));
 }
 
-function headerSizeFor(layout: LayoutCatalogItem | undefined, slide: SduiSlide | undefined, typography: SduiTypographyOverride | undefined): number | undefined {
+function headerSizeFor(
+  layoutId: string | undefined,
+  slide: SduiSlide | undefined,
+  typography: SduiTypographyOverride | undefined,
+): number | undefined {
+  const family = layoutFamilyForVariant(layoutId);
   const useCoverRole =
     slide?.slide_type === 'cover' ||
-    layout?.family === 'cover' ||
-    layout?.id === 'cover_image_full' ||
-    layout?.id === 'cover_with_cta';
-  if (useCoverRole) return cleanSize(typography?.coverSizePx) ?? cleanSize(typography?.headerSizePx);
+    family === 'cover' ||
+    layoutId === 'cover_image_full' ||
+    layoutId === 'cover_with_cta' ||
+    layoutId === 'cover-centered' ||
+    layoutId === 'cover-top' ||
+    layoutId === 'cover-bottom';
+  if (useCoverRole)
+    return cleanSize(typography?.coverSizePx) ?? cleanSize(typography?.headerSizePx);
   return cleanSize(typography?.headerSizePx);
 }
 
@@ -75,12 +83,14 @@ export function resolveSduiTextLimits(
   options: SduiTextGuardrailOptions = {},
   slide?: SduiSlide,
 ): SduiLayoutTextLimits {
-  const layout = getLayoutCatalogItem(layoutId);
   const base: SduiLayoutTextLimits = {
     ...DEFAULT_TEXT_LIMITS,
-    ...(layout?.textLimits ?? undefined),
+    ...getTextLimitsForVariant(layoutId),
   };
-  const headerScale = sizeScale(headerSizeFor(layout, slide, options.typography), BASELINE_TEXT_SIZE.header);
+  const headerScale = sizeScale(
+    headerSizeFor(layoutId, slide, options.typography),
+    BASELINE_TEXT_SIZE.header,
+  );
   const bodyScale = sizeScale(bodySizeFor(options.typography), BASELINE_TEXT_SIZE.body);
 
   return {
@@ -89,8 +99,12 @@ export function resolveSduiTextLimits(
     ...(base.body !== undefined ? { body: scaledLimit(base.body, bodyScale, 32) } : {}),
     ...(base.quote !== undefined ? { quote: scaledLimit(base.quote, headerScale, 28) } : {}),
     ...(base.ctaLabel !== undefined ? { ctaLabel: scaledLimit(base.ctaLabel, bodyScale, 10) } : {}),
-    ...(base.checklistItem !== undefined ? { checklistItem: scaledLimit(base.checklistItem, bodyScale, 16) } : {}),
-    ...(base.checklistItems !== undefined ? { checklistItems: checklistCountFor(base.checklistItems, bodySizeFor(options.typography)) } : {}),
+    ...(base.checklistItem !== undefined
+      ? { checklistItem: scaledLimit(base.checklistItem, bodyScale, 16) }
+      : {}),
+    ...(base.checklistItems !== undefined
+      ? { checklistItems: checklistCountFor(base.checklistItems, bodySizeFor(options.typography)) }
+      : {}),
   };
 }
 
@@ -142,14 +156,7 @@ const DANGLING_FINAL_MODIFIERS = new Set([
   'tetap',
 ]);
 
-const DANGLING_FINAL_PRONOUNS = new Set([
-  'anda',
-  'dia',
-  'ia',
-  'kamu',
-  'kita',
-  'mereka',
-]);
+const DANGLING_FINAL_PRONOUNS = new Set(['anda', 'dia', 'ia', 'kamu', 'kita', 'mereka']);
 
 const DANGLING_FINAL_ACTIONS = new Set([
   'bangun',
@@ -185,7 +192,7 @@ export interface SduiTextCompletenessAnalysis {
 }
 
 function lastWord(value: string): string {
-  const match = value.toLowerCase().match(/[\p{L}\p{N}]+$/u);
+  const match = /[\p{L}\p{N}]+$/u.exec(value.toLowerCase());
   return match?.[0] ?? '';
 }
 
@@ -202,7 +209,9 @@ function isLikelyDanglingIndonesianAction(word: string): boolean {
   return /^(mem|men|meng|meny)[\p{L}\p{N}]{4,}$/u.test(word);
 }
 
-export function analyzeSduiTextCompleteness(value: string | undefined): SduiTextCompletenessAnalysis {
+export function analyzeSduiTextCompleteness(
+  value: string | undefined,
+): SduiTextCompletenessAnalysis {
   if (typeof value !== 'string') return { incomplete: false };
   const text = value.replace(/\s+/g, ' ').trim();
   if (text.length === 0) return { incomplete: false };
@@ -213,7 +222,8 @@ export function analyzeSduiTextCompleteness(value: string | undefined): SduiText
 
   const finalWord = lastWord(text);
   if (DANGLING_FINAL_WORDS.has(finalWord)) return { incomplete: true, issue: 'dangling_connector' };
-  if (DANGLING_FINAL_MODIFIERS.has(finalWord)) return { incomplete: true, issue: 'dangling_modifier' };
+  if (DANGLING_FINAL_MODIFIERS.has(finalWord))
+    return { incomplete: true, issue: 'dangling_modifier' };
   if (DANGLING_FINAL_ACTIONS.has(finalWord) || isLikelyDanglingIndonesianAction(finalWord)) {
     return { incomplete: true, issue: 'dangling_action_verb' };
   }
@@ -228,7 +238,10 @@ export function analyzeSduiTextCompleteness(value: string | undefined): SduiText
 }
 
 function stripUnsafeEnding(value: string): string {
-  let out = value.trim().replace(/[,;:–-]+$/u, '').trimEnd();
+  let out = value
+    .trim()
+    .replace(/[,;:–-]+$/u, '')
+    .trimEnd();
   while (out.length > 0 && analyzeSduiTextCompleteness(out).incomplete) {
     const next = out.replace(/\s+[\p{L}\p{N}]+$/u, '').trimEnd();
     if (next === out || next.length < 8) break;
@@ -269,7 +282,10 @@ function trimText(
     .filter((index) => index >= minBoundary)
     .at(-1);
   if (sentenceBoundary !== undefined) {
-    return finishReadableSentence(sliced.slice(0, sentenceBoundary), options.finishSentence === true);
+    return finishReadableSentence(
+      sliced.slice(0, sentenceBoundary),
+      options.finishSentence === true,
+    );
   }
   const lastSpace = sliced.lastIndexOf(' ');
   if (lastSpace >= minBoundary) {
@@ -278,14 +294,20 @@ function trimText(
   return finishReadableSentence(sliced, options.finishSentence === true);
 }
 
-function constrainHighlight(text: string | undefined, highlight: string | undefined): string | undefined {
+function constrainHighlight(
+  text: string | undefined,
+  highlight: string | undefined,
+): string | undefined {
   const clean = trimText(highlight, 60);
   if (!clean) return undefined;
   if (!text) return clean;
   return text.toLowerCase().includes(clean.toLowerCase()) ? clean : undefined;
 }
 
-function applyComponentTextLimits(component: SduiComponent, limits: SduiLayoutTextLimits): SduiComponent {
+function applyComponentTextLimits(
+  component: SduiComponent,
+  limits: SduiLayoutTextLimits,
+): SduiComponent {
   if (component.type === 'tag') {
     const text = trimText(component.text, limits.tag);
     const { text: _text, ...rest } = component;
@@ -352,6 +374,34 @@ function applyComponentTextLimits(component: SduiComponent, limits: SduiLayoutTe
     };
   }
 
+  if (component.type === 'feature_cards') {
+    const cards = (component.items_cards ?? [])
+      .map((card) => ({
+        ...card,
+        icon: (card.icon ?? '').slice(0, 4),
+        title: trimText(card.title, 28) ?? card.title,
+        ...(card.description
+          ? { description: trimText(card.description, 65) ?? card.description }
+          : {}),
+      }))
+      .slice(0, 6);
+    const { items_cards: _cards, ...rest } = component;
+    return { ...rest, items_cards: cards };
+  }
+
+  if (component.type === 'comparison') {
+    const columns = (component.columns ?? []).slice(0, 2).map((col) => ({
+      ...col,
+      label: trimText(col.label, 18) ?? col.label,
+      items: col.items
+        .map((item) => trimText(item, 52) ?? item)
+        .filter(Boolean)
+        .slice(0, 4),
+    }));
+    const { columns: _cols, ...rest } = component;
+    return { ...rest, columns };
+  }
+
   return component;
 }
 
@@ -365,63 +415,242 @@ export function isRenderableSduiComponent(component: SduiComponent): boolean {
     case 'button_cta':
       return typeof component.label === 'string' && component.label.trim().length > 0;
     case 'checklist':
-      return Array.isArray(component.items) && component.items.some((item) => item.trim().length > 0);
+      return (
+        Array.isArray(component.items) && component.items.some((item) => item.trim().length > 0)
+      );
+    case 'feature_cards':
+      return Array.isArray(component.items_cards) && component.items_cards.length >= 2;
+    case 'comparison':
+      return (
+        Array.isArray(component.columns) &&
+        component.columns.length === 2 &&
+        component.columns.every((col) => col.items.length >= 1)
+      );
+    case 'byline':
+    case 'pull_quote':
+    case 'callout':
+    case 'caption':
+      return typeof component.text === 'string' && component.text.trim().length > 0;
+    case 'stat_block':
+      return (component.value ?? component.text ?? '').trim().length > 0;
+    case 'key_value_list':
+      return Array.isArray(component.rows) && component.rows.length >= 1;
+    case 'data_table':
+      return (
+        (Array.isArray(component.tableRows) && component.tableRows.length >= 1) ||
+        (Array.isArray(component.tableHeaders) && component.tableHeaders.length >= 1)
+      );
+    case 'stat_row':
+      return Array.isArray(component.stats) && component.stats.length >= 1;
+    case 'timeline':
+      return Array.isArray(component.timeline) && component.timeline.length >= 1;
+    case 'numbered_list':
+      return (
+        Array.isArray(component.items) && component.items.some((item) => item.trim().length > 0)
+      );
+    case 'progress_bar':
+      return Array.isArray(component.progress) && component.progress.length >= 1;
+    case 'divider':
     case 'image_placeholder':
     case 'visual_layer':
       return true;
   }
 }
 
+/** Component types that count as "supporting content" for the headline-only gate. */
+const RICH_SUPPORTING_TYPES = new Set<SduiComponent['type']>([
+  'feature_cards',
+  'comparison',
+  'stat_block',
+  'stat_row',
+  'key_value_list',
+  'data_table',
+  'timeline',
+  'numbered_list',
+  'progress_bar',
+  'callout',
+  'pull_quote',
+]);
+
+const MIN_MULTI_IMAGE_PLACEHOLDERS: Partial<Record<string, number>> = {
+  dual_image_comparison: 2,
+  product_angle_pair: 2,
+  use_case_gallery_2up: 2,
+  problem_solution_visual_pair: 2,
+  dos_donts_visual_pair: 2,
+  real_estate_room_pair: 2,
+  testimonial_with_portrait_and_product: 2,
+  mini_gallery_3up: 3,
+  step_visual_sequence: 3,
+  app_screen_flow: 3,
+  case_study_snapshot_grid: 3,
+  moodboard_grid: 4,
+  social_proof_wall: 4,
+  event_moment_grid: 4,
+  travel_itinerary_grid: 4,
+  collection_showcase: 4,
+  variant_selector_showcase: 4,
+  outfit_or_style_board: 4,
+  menu_or_food_combo: 4,
+};
+
 function qualityComponents(slide: SduiSlide): SduiComponent[] {
-  return (['top_meta', 'core_content', 'action_footer'] as const)
-    .flatMap((group) => slide.nested_groups[group] ?? []);
+  return (['top_meta', 'core_content', 'action_footer'] as const).flatMap(
+    (group) => slide.nested_groups[group] ?? [],
+  );
+}
+
+function componentContentUnits(component: SduiComponent): number {
+  switch (component.type) {
+    case 'header':
+      return component.text?.trim() ? 1 : 0;
+    case 'body':
+    case 'quote':
+    case 'pull_quote':
+    case 'callout':
+      return component.text?.trim() ? 1 : 0;
+    case 'button_cta':
+      return component.label?.trim() ? 1 : 0;
+    case 'checklist':
+    case 'numbered_list':
+      return (component.items ?? []).filter((item) => item.trim().length > 0).length >= 2 ? 1 : 0;
+    case 'feature_cards':
+      return (component.items_cards ?? []).filter((card) => card.title.trim().length > 0).length >=
+        2
+        ? 1
+        : 0;
+    case 'comparison':
+      return (component.columns ?? []).filter(
+        (column) => column.label.trim().length > 0 && column.items.length > 0,
+      ).length >= 2
+        ? 1
+        : 0;
+    case 'stat_block':
+      return component.value?.trim() || component.text?.trim() || component.label?.trim() ? 1 : 0;
+    case 'stat_row':
+      return (component.stats ?? []).filter(
+        (stat) => stat.value.trim().length > 0 && stat.label.trim().length > 0,
+      ).length >= 2
+        ? 1
+        : 0;
+    case 'key_value_list':
+      return (component.rows ?? []).filter(
+        (row) => row.label.trim().length > 0 && row.value.trim().length > 0,
+      ).length >= 2
+        ? 1
+        : 0;
+    case 'data_table':
+      return (component.tableRows ?? []).length >= 2 ? 1 : 0;
+    case 'timeline':
+      return (component.timeline ?? []).filter(
+        (item) => item.time.trim().length > 0 && item.text.trim().length > 0,
+      ).length >= 2
+        ? 1
+        : 0;
+    case 'progress_bar':
+      return (component.progress ?? []).filter((item) => item.label.trim().length > 0).length >= 2
+        ? 1
+        : 0;
+    case 'byline':
+    case 'caption':
+      return component.text?.trim() ? 1 : 0;
+    default:
+      return 0;
+  }
 }
 
 export function sduiContentQualityIssues(slides: SduiSlide[]): string[] {
   const issues: string[] = [];
   for (const slide of slides) {
     const components = qualityComponents(slide);
-    const hasHeader = components.some((component) => component.type === 'header' && isRenderableSduiComponent(component));
-    const hasBody = components.some((component) => component.type === 'body' && isRenderableSduiComponent(component));
-    const hasQuote = components.some((component) => component.type === 'quote' && isRenderableSduiComponent(component));
-    const hasChecklist = components.some((component) => component.type === 'checklist' && isRenderableSduiComponent(component));
-    const hasButton = components.some((component) => component.type === 'button_cta' && isRenderableSduiComponent(component));
-    const layout = getLayoutCatalogItem(slide.layout_variant_id);
+    const hasHeader = components.some(
+      (component) => component.type === 'header' && isRenderableSduiComponent(component),
+    );
+    const hasBody = components.some(
+      (component) => component.type === 'body' && isRenderableSduiComponent(component),
+    );
+    const hasQuote = components.some(
+      (component) => component.type === 'quote' && isRenderableSduiComponent(component),
+    );
+    const hasChecklist = components.some(
+      (component) => component.type === 'checklist' && isRenderableSduiComponent(component),
+    );
+    const hasButton = components.some(
+      (component) => component.type === 'button_cta' && isRenderableSduiComponent(component),
+    );
+    const layoutFamily = layoutFamilyForVariant(slide.layout_variant_id);
+    const contentUnits = components.reduce(
+      (sum, component) => sum + componentContentUnits(component),
+      0,
+    );
+    const imageCount = components.filter(
+      (component) => component.type === 'image_placeholder',
+    ).length;
+    const minImages = slide.layout_variant_id
+      ? MIN_MULTI_IMAGE_PLACEHOLDERS[slide.layout_variant_id]
+      : undefined;
 
     if (!hasHeader && !hasQuote && slide.slide_type !== 'cover') {
       issues.push(`slide ${slide.slide_number}: missing headline/quote`);
     }
 
-    if (layout?.requiredComponents.includes('body') && !hasBody) {
-      issues.push(`slide ${slide.slide_number}: layout ${layout.id} requires non-empty body`);
+    if (layoutFamily === 'text' && !hasBody && slide.slide_type !== 'cover') {
+      issues.push(
+        `slide ${slide.slide_number}: layout ${slide.layout_variant_id} expects supporting body content`,
+      );
     }
-    if (layout?.requiredComponents.includes('quote') && !hasQuote) {
-      issues.push(`slide ${slide.slide_number}: layout ${layout.id} requires non-empty quote`);
+    if (layoutFamily === 'quote' && !hasQuote) {
+      issues.push(
+        `slide ${slide.slide_number}: layout ${slide.layout_variant_id} requires non-empty quote`,
+      );
     }
-    if (layout?.requiredComponents.includes('checklist') && !hasChecklist) {
-      issues.push(`slide ${slide.slide_number}: layout ${layout.id} requires non-empty checklist items`);
+    if (layoutFamily === 'checklist' && !hasChecklist) {
+      issues.push(
+        `slide ${slide.slide_number}: layout ${slide.layout_variant_id} requires non-empty checklist items`,
+      );
     }
-    if (layout?.requiredComponents.includes('button_cta') && !hasButton) {
-      issues.push(`slide ${slide.slide_number}: layout ${layout.id} requires non-empty CTA label`);
+    if (layoutFamily === 'cta' && !hasButton) {
+      issues.push(
+        `slide ${slide.slide_number}: layout ${slide.layout_variant_id} requires non-empty CTA label`,
+      );
     }
 
-    const hasSupportingContent = hasBody || hasQuote || hasChecklist || hasButton;
+    const hasRichSupporting = components.some(
+      (component) =>
+        RICH_SUPPORTING_TYPES.has(component.type) && isRenderableSduiComponent(component),
+    );
+    const hasSupportingContent =
+      hasBody || hasQuote || hasChecklist || hasButton || hasRichSupporting;
     if (slide.slide_type === 'content' && !hasSupportingContent) {
       issues.push(`slide ${slide.slide_number}: content slide cannot be headline-only`);
+    }
+    if (slide.slide_type === 'content' && contentUnits < 2) {
+      issues.push(
+        `slide ${slide.slide_number}: content slide is too sparse (${contentUnits}/2 content units)`,
+      );
+    }
+    if (minImages !== undefined && imageCount < minImages) {
+      issues.push(
+        `slide ${slide.slide_number}: layout ${slide.layout_variant_id} requires at least ${minImages} image_placeholders (${imageCount}/${minImages})`,
+      );
     }
 
     for (const component of components) {
       if (component.type === 'body' || component.type === 'quote') {
         const analysis = analyzeSduiTextCompleteness(component.text);
         if (analysis.incomplete) {
-          issues.push(`slide ${slide.slide_number}: ${component.type} appears incomplete (${analysis.issue})`);
+          issues.push(
+            `slide ${slide.slide_number}: ${component.type} appears incomplete (${analysis.issue})`,
+          );
         }
       }
       if (component.type === 'checklist') {
         (component.items ?? []).forEach((item, index) => {
           const analysis = analyzeSduiTextCompleteness(item);
           if (analysis.incomplete) {
-            issues.push(`slide ${slide.slide_number}: checklist item ${index + 1} appears incomplete (${analysis.issue})`);
+            issues.push(
+              `slide ${slide.slide_number}: checklist item ${index + 1} appears incomplete (${analysis.issue})`,
+            );
           }
         });
       }
@@ -440,32 +669,70 @@ export function sduiTextFitIssues(
     const components = qualityComponents(slide);
 
     for (const component of components) {
-      if (component.type === 'tag' && typeof component.text === 'string' && component.text.trim().length > limits.tag) {
-        issues.push(`slide ${slide.slide_number}: tag exceeds text limit (${component.text.trim().length}/${limits.tag})`);
+      if (
+        component.type === 'tag' &&
+        typeof component.text === 'string' &&
+        component.text.trim().length > limits.tag
+      ) {
+        issues.push(
+          `slide ${slide.slide_number}: tag exceeds text limit (${component.text.trim().length}/${limits.tag})`,
+        );
       }
-      if (component.type === 'header' && typeof component.text === 'string' && limits.header !== undefined && component.text.trim().length > limits.header) {
-        issues.push(`slide ${slide.slide_number}: header exceeds text limit (${component.text.trim().length}/${limits.header})`);
+      if (
+        component.type === 'header' &&
+        typeof component.text === 'string' &&
+        limits.header !== undefined &&
+        component.text.trim().length > limits.header
+      ) {
+        issues.push(
+          `slide ${slide.slide_number}: header exceeds text limit (${component.text.trim().length}/${limits.header})`,
+        );
       }
-      if (component.type === 'body' && typeof component.text === 'string' && limits.body !== undefined && component.text.trim().length > limits.body) {
-        issues.push(`slide ${slide.slide_number}: body exceeds text limit (${component.text.trim().length}/${limits.body})`);
+      if (
+        component.type === 'body' &&
+        typeof component.text === 'string' &&
+        limits.body !== undefined &&
+        component.text.trim().length > limits.body
+      ) {
+        issues.push(
+          `slide ${slide.slide_number}: body exceeds text limit (${component.text.trim().length}/${limits.body})`,
+        );
       }
-      if (component.type === 'quote' && typeof component.text === 'string' && limits.quote !== undefined && component.text.trim().length > limits.quote) {
-        issues.push(`slide ${slide.slide_number}: quote exceeds text limit (${component.text.trim().length}/${limits.quote})`);
+      if (
+        component.type === 'quote' &&
+        typeof component.text === 'string' &&
+        limits.quote !== undefined &&
+        component.text.trim().length > limits.quote
+      ) {
+        issues.push(
+          `slide ${slide.slide_number}: quote exceeds text limit (${component.text.trim().length}/${limits.quote})`,
+        );
       }
-      if (component.type === 'button_cta' && typeof component.label === 'string' && limits.ctaLabel !== undefined && component.label.trim().length > limits.ctaLabel) {
-        issues.push(`slide ${slide.slide_number}: CTA label exceeds text limit (${component.label.trim().length}/${limits.ctaLabel})`);
+      if (
+        component.type === 'button_cta' &&
+        typeof component.label === 'string' &&
+        limits.ctaLabel !== undefined &&
+        component.label.trim().length > limits.ctaLabel
+      ) {
+        issues.push(
+          `slide ${slide.slide_number}: CTA label exceeds text limit (${component.label.trim().length}/${limits.ctaLabel})`,
+        );
       }
       if (component.type === 'checklist') {
         const itemLimit = limits.checklistItem ?? DEFAULT_TEXT_LIMITS.checklistItem!;
         const itemCount = limits.checklistItems ?? DEFAULT_TEXT_LIMITS.checklistItems!;
         const items = component.items ?? [];
         if (items.length > itemCount) {
-          issues.push(`slide ${slide.slide_number}: checklist has too many items (${items.length}/${itemCount})`);
+          issues.push(
+            `slide ${slide.slide_number}: checklist has too many items (${items.length}/${itemCount})`,
+          );
         }
         items.forEach((item, index) => {
           const length = item.trim().length;
           if (length > itemLimit) {
-            issues.push(`slide ${slide.slide_number}: checklist item ${index + 1} exceeds text limit (${length}/${itemLimit})`);
+            issues.push(
+              `slide ${slide.slide_number}: checklist item ${index + 1} exceeds text limit (${length}/${itemLimit})`,
+            );
           }
         });
       }
@@ -474,7 +741,10 @@ export function sduiTextFitIssues(
   return issues;
 }
 
-export function applySduiTextGuardrails(slide: SduiSlide, options: SduiTextGuardrailOptions = {}): SduiSlide {
+export function applySduiTextGuardrails(
+  slide: SduiSlide,
+  options: SduiTextGuardrailOptions = {},
+): SduiSlide {
   const limits = limitFor(slide, options);
   const mapComponents = (components: SduiComponent[] | undefined): SduiComponent[] | undefined => {
     if (!components) return undefined;

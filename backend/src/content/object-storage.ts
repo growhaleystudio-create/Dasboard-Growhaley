@@ -132,6 +132,8 @@ export class SupabaseObjectStorage implements ObjectStorage {
           'x-upsert': 'true',
         },
         body: bytes,
+        // Bounded upload: a stalled storage endpoint must never hang the job.
+        signal: AbortSignal.timeout(30_000),
       });
 
       if (!response.ok) {

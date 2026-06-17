@@ -43,21 +43,71 @@ import {
   Minus,
   X,
   Maximize2,
+  Copy,
 } from 'lucide-react';
 import type {
-  ApprovedExampleStructure,
   AspectRatio,
   AppErrorCode,
   BlockType,
   BrandKit,
-  JobView,
-  ImageRequirement,
-  ImageStatus,
-  LayoutFamily,
-  LayoutSource,
-  LayoutVariantId,
   MasterTemplate,
+  CarouselWorkflowArtifact,
+  ContentConversationContextMessage,
+  JobView,
+  LayoutStylePreference,
+  ImagePreferenceMode,
+  SduiSlide,
 } from '@leads-generator/shared';
+import {
+  ASPECT_RATIOS,
+  ASPECT_RATIO_CLASS,
+  BRAND_COLOR_PRESETS,
+  CLIENT_POLL_CAP_MS,
+  EXTRA_TYPOGRAPHY_ROLE_CONFIG,
+  FAILURE_LABEL,
+  HEX_RE,
+  IMAGE_PREFERENCE_OPTIONS,
+  LAYOUT_STYLE_OPTIONS,
+  LOGO_PLACEMENT_OPTIONS,
+  MAX_ASSET_BYTES,
+} from './content-generator-constants';
+import { BLOCK_TYPES } from './content-generator-types';
+import {
+  contentTagsFromConfig,
+  conversationContextFromMessages,
+  createDefaultExtraTypography,
+  extraTypographyFromBrandKit,
+  failureDisplay,
+  getErrorMessage,
+  isHex,
+  parsePositiveInt,
+  promptTextFromSlide,
+  readFileAsBase64,
+  typographyOverrideFromConfig,
+  withWorkflowSlide,
+  withWorkflowSlides,
+} from './content-generator-helpers';
+import type {
+  ActiveTab,
+  ChatHistoryItem,
+  ChatMessage,
+  ChatSessionCache,
+  DraftResponse,
+  ExampleItem,
+  ExtraTypographyRole,
+  FontDraft,
+  GeneratorConfig,
+  GeneratorRequestInput,
+  GeneratorStage,
+  JobSlide,
+  Phase,
+  PreviewSelection,
+  ProcessingKind,
+  RefMode,
+  TypographyOverridePayload,
+  TypographyRoleDraft,
+  VisualRef,
+} from './content-generator-types';
 import { useSession } from '@/lib/useSession';
 import { AppError, fetchApi } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
@@ -70,238 +120,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 // ---------------------------------------------------------------------------
-// Constants & helpers
-// ---------------------------------------------------------------------------
-
-type ActiveTab = 'generate' | 'brand' | 'examples' | 'references';
-
-const BLOCK_TYPES: BlockType[] = [
-  'heading',
-  'body',
-  'mockup',
-  'chart',
-  'quote',
-  'stat',
-  'bullet',
-  'cta',
-  'image',
-];
-
-const ASPECT_RATIOS: AspectRatio[] = ['1:1', '4:5', '9:16'];
-
-const LOGO_PLACEMENT_OPTIONS = [
-  { label: 'Top Left', value: 'top-left' },
-  { label: 'Top Right', value: 'top-right' },
-  { label: 'Bottom Left', value: 'bottom-left' },
-  { label: 'Bottom Right', value: 'bottom-right' },
-  { label: 'No Logo', value: 'none' },
-];
-
-const BRAND_COLOR_PRESETS = [
-  { label: 'Clean', colors: ['#111827', '#F8FAFC', '#2563EB'] },
-  { label: 'Warm', colors: ['#18181B', '#FFF7ED', '#F97316'] },
-  { label: 'Fresh', colors: ['#0F172A', '#F0FDFA', '#14B8A6'] },
-  { label: 'Bold', colors: ['#0A0D14', '#F5F3FF', '#7C3AED'] },
-] as const;
-
-const FAILURE_LABEL: Record<string, string> = {
-  validation_error: 'Konten perlu diperbaiki',
-  budget_exceeded: 'Budget AI habis',
-  endpoint_mismatch: 'Endpoint tidak sesuai',
-  insecure_transport: 'Koneksi tidak aman',
-  privacy_violation: 'Terdeteksi data pribadi',
-  background_unclean: 'Background tidak bersih',
-  missing_chart_data: 'Data chart hilang',
-  missing_mockup: 'Berkas mockup hilang',
-  upload_failed: 'Gagal upload gambar',
-  off_brand: 'Tidak sesuai brand',
-  provider_error: 'Error provider AI',
-  timeout: 'Waktu pemrosesan habis',
-  layout_unsatisfiable: 'Layout tidak dapat diterapkan',
-};
-
-const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-const MAX_ASSET_BYTES = 5 * 1024 * 1024;
-
-const isHex = (value: string) => HEX_RE.test(value);
-const getErrorMessage = (err: unknown, fallback: string) =>
-  err instanceof AppError ? err.message : err instanceof Error ? err.message : fallback;
-const failureLabel = (reason?: string) =>
-  reason ? FAILURE_LABEL[reason] ?? reason : undefined;
-const failureDisplay = (reason?: string, errorCode?: AppErrorCode) => {
-  const label = failureLabel(reason) ?? 'Tidak diketahui';
-  return errorCode ? `${label} (${errorCode})` : label;
-};
-
-/** Read a File into raw base64 (without the `data:...;base64,` prefix). */
-const readFileAsBase64 = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('FILE_READ_FAILED'));
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result !== 'string') {
-        reject(new Error('FILE_READ_EMPTY'));
-        return;
-      }
-      resolve(result.includes(',') ? result.split(',')[1] ?? '' : result);
-    };
-    reader.readAsDataURL(file);
-  });
-
-interface ExampleItem {
-  id: string;
-  sourceJobId?: string | null;
-  createdAt?: string;
-  structure?: ApprovedExampleStructure;
-}
-
-interface FontDraft {
-  base64: string;
-  family: string;
-  format: 'ttf' | 'otf';
-  fileName: string;
-  weight?: number;
-  style?: 'normal' | 'italic';
-}
-
-// ---------------------------------------------------------------------------
-// SDUI types (Fase 2)
-// ---------------------------------------------------------------------------
-
-interface SduiComponent {
-  type: string;
-  text?: string;
-  highlight?: string;
-  label?: string;
-  items?: string[];
-  style?: 'primary' | 'secondary';
-  requires_generation?: boolean;
-  asset_type?: string;
-  image_object_context?: string;
-  imageUrl?: string;
-  heightPercent?: number;
-  align?: 'left' | 'center' | 'right';
-  verticalAlign?: 'top' | 'center' | 'bottom';
-  textTransform?: 'uppercase' | 'none';
-}
-
-interface SduiSlide {
-  slide_number: number;
-  slide_type: 'cover' | 'content';
-  container_layout: 'text_dominant' | 'split_screen' | 'background_overlay';
-  layout_variant_id?: LayoutVariantId;
-  layout_family?: LayoutFamily;
-  image_requirement?: ImageRequirement;
-  layout_source?: LayoutSource;
-  image_status?: ImageStatus;
-  typography_scale?: 'editorial_bold' | 'balanced_classic' | 'information_dense';
-  contentDirection?: 'column' | 'row';
-  nested_groups: {
-    top_meta?: SduiComponent[];
-    core_content?: SduiComponent[];
-    action_footer?: SduiComponent[];
-  };
-}
-
-interface DraftResponse {
-  slides: SduiSlide[];
-  aspectRatio: AspectRatio;
-  chosenReferenceId?: string | null;
-}
-
-interface VisualDna {
-  componentSequence: string[];
-  headerToBodyRatio: number;
-  layoutArchetype: string;
-  typographyScale: string;
-}
-
-interface VisualRef {
-  id: string;
-  name: string;
-  imageUrl: string;
-  dna: VisualDna;
-  tags: string[];
-  createdAt: string;
-}
-
-type RefMode = 'no_reference' | 'auto_match' | 'manual';
-
-interface GeneratorConfig {
-  headerSize: string;
-  bodySize: string;
-  aspectRatio: AspectRatio;
-  slideCount: string;
-  referenceMode: RefMode;
-  chosenReferenceId: string | null;
-}
-
-interface TypographyOverridePayload {
-  coverSizePx?: number;
-  headerSizePx?: number;
-  bodySizePx?: number;
-}
-
-const parseConfigSize = (value: string, min: number, max: number): number | undefined => {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return undefined;
-  const rounded = Math.round(n);
-  if (rounded < min || rounded > max) return undefined;
-  return rounded;
-};
-
-const typographyOverrideFromConfig = (config: GeneratorConfig): TypographyOverridePayload | undefined => {
-  const headerSizePx = parseConfigSize(config.headerSize, 12, 180);
-  const bodySizePx = parseConfigSize(config.bodySize, 8, 96);
-  const override: TypographyOverridePayload = {};
-  if (headerSizePx !== undefined) {
-    override.headerSizePx = headerSizePx;
-    override.coverSizePx = headerSizePx;
-  }
-  if (bodySizePx !== undefined) override.bodySizePx = bodySizePx;
-  return Object.keys(override).length > 0 ? override : undefined;
-};
-
-interface ChatHistoryItem {
-  id: string;
-  prompt: string;
-  title: string;
-  createdAt: string;
-  planning: boolean;
-  config: GeneratorConfig;
-}
-
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
-  createdAt: string;
-}
-
-interface GeneratorRequestInput {
-  prompt: string;
-  config: GeneratorConfig;
-}
-
-type GeneratorStage = 'active' | 'filled' | 'processing';
-type ProcessingKind = 'draft' | 'generate' | 'revise' | 'render' | 'slide-revise' | 'preview-revise';
-type JobSlide = JobView['slides'][number];
-
-interface PreviewSelection {
-  slide: JobSlide;
-  draftSlide?: SduiSlide;
-}
-
-const ASPECT_RATIO_CLASS: Record<AspectRatio, string> = {
-  '1:1': 'aspect-square',
-  '4:5': 'aspect-[4/5]',
-  '9:16': 'aspect-[9/16]',
-};
-
-// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
+
 
 export default function ContentGeneratorPage() {
   const { data: sessionData, isLoading: isSessionLoading } = useSession();
@@ -318,6 +139,7 @@ export default function ContentGeneratorPage() {
   const [fonts, setFonts] = useState<FontDraft[]>([]);
   const [colors, setColors] = useState<string[]>(['#187DB4', '#0A0D14']);
   const [logoPlacement, setLogoPlacement] = useState<string>('bottom-left');
+  const [logoSizePx, setLogoSizePx] = useState<string>('24');
   const [pageNumberFormat, setPageNumberFormat] = useState<string>('{current}/{total}');
   const [siteUrl, setSiteUrl] = useState<string>('');
   // -- Typography & color roles (Brand Kit v2) ------------------------------
@@ -327,6 +149,7 @@ export default function ContentGeneratorPage() {
   const [coverSize, setCoverSize] = useState<string>('72');
   const [headerSize, setHeaderSize] = useState<string>('48');
   const [bodySize, setBodySize] = useState<string>('22');
+  const [tags, setTags] = useState<string>('');
   const [headerColor, setHeaderColor] = useState<string>('#1a1d24');
   const [bodyColor, setBodyColor] = useState<string>('#5b626e');
   const [highlightColor, setHighlightColor] = useState<string>('#187DB4');
@@ -334,6 +157,9 @@ export default function ContentGeneratorPage() {
   const [paginationColor, setPaginationColor] = useState<string>('#5b626e');
   const [metaColor, setMetaColor] = useState<string>('#5b626e');
   const [accentColor, setAccentColor] = useState<string>('#187DB4');
+  const [extraTypography, setExtraTypography] = useState<Record<ExtraTypographyRole, TypographyRoleDraft>>(
+    () => createDefaultExtraTypography(),
+  );
   const logoInputRef = useRef<HTMLInputElement>(null);
   const fontInputRef = useRef<HTMLInputElement>(null);
 
@@ -350,14 +176,19 @@ export default function ContentGeneratorPage() {
   const [genRatio, setGenRatio] = useState<AspectRatio>('1:1');
   const [activeRatio, setActiveRatio] = useState<AspectRatio>('1:1');
   const [slideCount, setSlideCount] = useState<string>('');
+  const [layoutStyle, setLayoutStyle] = useState<LayoutStylePreference>('auto');
+  const [imagePreference, setImagePreference] = useState<ImagePreferenceMode>('auto');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  // Client-side poll cap: stops the spinner if the API never resolves the job.
+  const [clientPollTimedOut, setClientPollTimedOut] = useState(false);
+  const pollCapReachedRef = useRef(false);
 
   // -- Fase 2: Draft + chat feedback + inline edit + regen ------------------
   // Step: 'idle' | 'draft_ready' | 'done'
-  type Phase = 'idle' | 'draft_ready' | 'done';
   const [phase, setPhase] = useState<Phase>('idle');
   const [activePrompt, setActivePrompt] = useState('');
   const [draftSlides, setDraftSlides] = useState<SduiSlide[]>([]);
+  const [draftWorkflow, setDraftWorkflow] = useState<CarouselWorkflowArtifact | null>(null);
   const [draftRatio, setDraftRatio] = useState<AspectRatio>('4:5');
   const [chatFeedback, setChatFeedback] = useState<string>('');
   // inline edit: { slideIdx → { group → compIdx → text } }
@@ -382,6 +213,7 @@ export default function ContentGeneratorPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [configSavedAt, setConfigSavedAt] = useState<string | null>(null);
+  const [chatSessionLoaded, setChatSessionLoaded] = useState(false);
 
   // -- Queries --------------------------------------------------------------
   const brandKitQuery = useQuery({
@@ -414,9 +246,23 @@ export default function ContentGeneratorPage() {
     enabled: !!teamId && !!activeJobId,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === 'pending' ? 2000 : false;
+      if (status !== 'pending') return false;
+      if (pollCapReachedRef.current) return false;
+      return 2000;
     },
   });
+
+  // Reset + arm the client poll cap whenever a new job becomes active.
+  React.useEffect(() => {
+    setClientPollTimedOut(false);
+    pollCapReachedRef.current = false;
+    if (!activeJobId) return;
+    const timer = setTimeout(() => {
+      pollCapReachedRef.current = true;
+      setClientPollTimedOut(true);
+    }, CLIENT_POLL_CAP_MS);
+    return () => clearTimeout(timer);
+  }, [activeJobId]);
 
   const brandKit = brandKitQuery.data ?? null;
   const masterTemplate = masterTemplateQuery.data ?? null;
@@ -439,6 +285,7 @@ export default function ContentGeneratorPage() {
     if (brandKit?.colors?.length) setColors(brandKit.colors);
     if (brandKit?.chrome) {
       setLogoPlacement(brandKit.chrome.logoPlacement);
+      setLogoSizePx(String(brandKit.chrome.logoSizePx ?? 24));
       setPageNumberFormat(brandKit.chrome.pageNumberFormat);
       setSiteUrl(brandKit.chrome.siteUrl);
     }
@@ -459,23 +306,142 @@ export default function ContentGeneratorPage() {
       setPaginationColor(t.paginationColor ?? '#5b626e');
       setMetaColor(t.metaTextColor ?? '#5b626e');
       setAccentColor(t.accent ?? brandKit?.colors?.[0] ?? '#187DB4');
+      setExtraTypography(extraTypographyFromBrandKit(t));
     } else if (brandKit?.colors?.[0]) {
       setAccentColor(brandKit.colors[0]);
       setHighlightColor(brandKit.colors[0]);
+      setExtraTypography(extraTypographyFromBrandKit(undefined));
     }
   }, [brandKit]);
+
+  React.useEffect(() => {
+    if (!teamId || typeof window === 'undefined' || chatSessionLoaded) return;
+    const sessionRaw = window.localStorage.getItem(`content-generator-chat-session:${teamId}`);
+    if (!sessionRaw) {
+      setChatSessionLoaded(true);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(sessionRaw) as ChatSessionCache;
+      if (Array.isArray(parsed.messages)) {
+        setChatMessages(parsed.messages.slice(-20));
+      }
+      if (typeof parsed.activePrompt === 'string') {
+        setActivePrompt(parsed.activePrompt);
+      }
+      if (typeof parsed.activePrompt === 'string' && !parsed.messages?.length) {
+        setPrompt(parsed.activePrompt);
+      }
+      if (parsed.phase === 'idle' || parsed.phase === 'draft_ready' || parsed.phase === 'done') {
+        setPhase(parsed.phase);
+      }
+      if (parsed.activeConfig) {
+        if (typeof parsed.activeConfig.headerSize === 'string') setHeaderSize(parsed.activeConfig.headerSize);
+        if (typeof parsed.activeConfig.bodySize === 'string') setBodySize(parsed.activeConfig.bodySize);
+        if (typeof parsed.activeConfig.aspectRatio === 'string' && ASPECT_RATIOS.includes(parsed.activeConfig.aspectRatio as AspectRatio)) {
+          setGenRatio(parsed.activeConfig.aspectRatio as AspectRatio);
+        }
+        if (typeof parsed.activeConfig.slideCount === 'string') setSlideCount(parsed.activeConfig.slideCount);
+        if (typeof parsed.activeConfig.tags === 'string') setTags(parsed.activeConfig.tags);
+        if (typeof parsed.activeConfig.referenceMode === 'string') setRefMode(parsed.activeConfig.referenceMode as RefMode);
+        if (parsed.activeConfig.chosenReferenceId !== undefined) setChosenRefId(parsed.activeConfig.chosenReferenceId ?? null);
+        if (typeof parsed.activeConfig.layoutStyle === 'string') setLayoutStyle(parsed.activeConfig.layoutStyle as LayoutStylePreference);
+        if (typeof parsed.activeConfig.imagePreference === 'string') setImagePreference(parsed.activeConfig.imagePreference as ImagePreferenceMode);
+      }
+      if (parsed.activeJobId !== undefined) {
+        setActiveJobId(parsed.activeJobId);
+      }
+    } catch {
+      window.localStorage.removeItem(`content-generator-chat-session:${teamId}`);
+    } finally {
+      setChatSessionLoaded(true);
+    }
+  }, [chatSessionLoaded, teamId]);
 
   const currentGeneratorConfig = useMemo<GeneratorConfig>(() => ({
     headerSize,
     bodySize,
     aspectRatio: genRatio,
     slideCount: slideCount.trim() || String(Math.min(5, masterTemplate?.maxSlides ?? 7)),
+    tags,
     referenceMode: refMode,
     chosenReferenceId: chosenRefId,
-  }), [bodySize, chosenRefId, genRatio, headerSize, masterTemplate?.maxSlides, refMode, slideCount]);
+    layoutStyle,
+    imagePreference,
+  }), [
+    bodySize,
+    chosenRefId,
+    genRatio,
+    headerSize,
+    imagePreference,
+    layoutStyle,
+    masterTemplate?.maxSlides,
+    refMode,
+    slideCount,
+    tags,
+  ]);
+
+  const buildGeneratorPayload = (
+    config: GeneratorConfig = currentGeneratorConfig,
+    context: ContentConversationContextMessage[] = conversationContextFromMessages(chatMessages),
+  ): {
+    typographyOverride?: TypographyOverridePayload;
+    contentTags?: string[];
+    conversationContext?: ContentConversationContextMessage[];
+    layoutStyle?: LayoutStylePreference;
+    imagePreference?: ImagePreferenceMode;
+  } => {
+    const payload: {
+      typographyOverride?: TypographyOverridePayload;
+      contentTags?: string[];
+      conversationContext?: ContentConversationContextMessage[];
+      layoutStyle?: LayoutStylePreference;
+      imagePreference?: ImagePreferenceMode;
+    } = {};
+    const typographyOverride = typographyOverrideFromConfig(config);
+    const contentTags = contentTagsFromConfig(config);
+    if (typographyOverride) payload.typographyOverride = typographyOverride;
+    if (contentTags.length > 0) payload.contentTags = contentTags;
+    if (context.length > 0) payload.conversationContext = context;
+    if (config.layoutStyle !== 'auto') payload.layoutStyle = config.layoutStyle;
+    if (config.imagePreference !== 'auto') payload.imagePreference = config.imagePreference;
+    return payload;
+  };
+
+  React.useEffect(() => {
+    if (!teamId || typeof window === 'undefined' || !chatSessionLoaded) return;
+    const payload: ChatSessionCache = {
+      messages: chatMessages.slice(-20),
+      activePrompt,
+      phase,
+      activeConfig: currentGeneratorConfig,
+      activeJobId,
+    };
+    window.localStorage.setItem(`content-generator-chat-session:${teamId}`, JSON.stringify(payload));
+  }, [activeJobId, activePrompt, chatMessages, chatSessionLoaded, currentGeneratorConfig, phase, teamId]);
 
   React.useEffect(() => {
     if (!teamId || typeof window === 'undefined') return;
+    const sessionRaw = window.localStorage.getItem(`content-generator-chat-session:${teamId}`);
+    if (sessionRaw) {
+      try {
+        const parsed = JSON.parse(sessionRaw) as ChatSessionCache;
+        if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+          const historyRaw = window.localStorage.getItem(`content-generator-history:${teamId}`);
+          if (historyRaw) {
+            try {
+              const parsedHistory = JSON.parse(historyRaw) as ChatHistoryItem[];
+              setChatHistory(parsedHistory.slice(0, 8));
+            } catch {
+              window.localStorage.removeItem(`content-generator-history:${teamId}`);
+            }
+          }
+          return;
+        }
+      } catch {
+        // Fall through to legacy config/history restore.
+      }
+    }
     const configRaw = window.localStorage.getItem(`content-generator-config:${teamId}`);
     if (configRaw) {
       try {
@@ -484,8 +450,11 @@ export default function ContentGeneratorPage() {
         if (parsed.bodySize) setBodySize(parsed.bodySize);
         if (parsed.aspectRatio && ASPECT_RATIOS.includes(parsed.aspectRatio)) setGenRatio(parsed.aspectRatio);
         if (parsed.slideCount) setSlideCount(parsed.slideCount);
+        if (typeof parsed.tags === 'string') setTags(parsed.tags);
         if (parsed.referenceMode) setRefMode(parsed.referenceMode);
         setChosenRefId(parsed.chosenReferenceId ?? null);
+        if (parsed.layoutStyle) setLayoutStyle(parsed.layoutStyle);
+        if (parsed.imagePreference) setImagePreference(parsed.imagePreference);
         setConfigSavedAt('Loaded');
       } catch {
         window.localStorage.removeItem(`content-generator-config:${teamId}`);
@@ -496,7 +465,7 @@ export default function ContentGeneratorPage() {
     if (historyRaw) {
       try {
         const parsed = JSON.parse(historyRaw) as ChatHistoryItem[];
-        setChatHistory(parsed.slice(0, 5));
+        setChatHistory(parsed.slice(0, 8));
       } catch {
         window.localStorage.removeItem(`content-generator-history:${teamId}`);
       }
@@ -523,11 +492,26 @@ export default function ContentGeneratorPage() {
           ...(f.style !== undefined ? { style: f.style } : {}),
         })),
         colors,
-        chrome: { logoPlacement, pageNumberFormat, siteUrl },
+        chrome: {
+          logoPlacement,
+          pageNumberFormat,
+          siteUrl,
+          logoSizePx: parsePositiveInt(logoSizePx, 12, 180),
+        },
         typography: {
           cover: { fontFamily: coverFont, color: headerColor, sizePx: parseSize(coverSize) },
           header: { fontFamily: headerFont, color: headerColor, sizePx: parseSize(headerSize) },
           body: { fontFamily: bodyFont, color: bodyColor, sizePx: parseSize(bodySize) },
+          ...Object.fromEntries(
+            EXTRA_TYPOGRAPHY_ROLE_CONFIG.map((config) => [
+              config.role,
+              {
+                fontFamily: extraTypography[config.role].fontFamily,
+                color: extraTypography[config.role].color,
+                sizePx: parsePositiveInt(extraTypography[config.role].sizePx, 8, 180),
+              },
+            ]),
+          ),
           highlightColor,
           background: bgColor,
           paginationColor,
@@ -578,41 +562,63 @@ export default function ContentGeneratorPage() {
     onError: (err) => toast.error(getErrorMessage(err, 'Gagal menyimpan Master Template')),
   });
 
-	  const generateMutation = useMutation({
-	    mutationFn: ({ prompt: submittedPrompt, config }: GeneratorRequestInput) => {
-      const body: Record<string, unknown> = { prompt: submittedPrompt, aspectRatio: config.aspectRatio };
-      const typographyOverride = typographyOverrideFromConfig(config);
-      if (typographyOverride) body.typographyOverride = typographyOverride;
+  const generateMutation = useMutation({
+    mutationFn: ({ prompt: submittedPrompt, config, conversationContext }: GeneratorRequestInput) => {
+      const body: Record<string, unknown> = {
+        prompt: submittedPrompt,
+        aspectRatio: config.aspectRatio,
+        ...buildGeneratorPayload(config, conversationContext),
+      };
       const count = Number(config.slideCount);
       if (config.slideCount.trim() !== '' && Number.isInteger(count) && count >= 1 && count <= 10) {
         body.requestedSlideCount = count;
       }
-	      return fetchApi<{ jobId: string; status?: JobView['status'] }>(
-	        `/api/teams/${teamId}/content/carousel/generate`,
-	        { method: 'POST', body: JSON.stringify(body) },
-	      );
-	    },
-	    onMutate: ({ config }) => {
-	      setActiveRatio(config.aspectRatio);
-	    },
-	    onSuccess: (res) => {
-	      setActiveJobId(res.jobId);
-	      toast.success('Carousel sedang diproses di background');
+      return fetchApi<{ jobId: string; status?: JobView['status'] }>(
+        `/api/teams/${teamId}/content/carousel/generate`,
+        { method: 'POST', body: JSON.stringify(body) },
+      );
     },
-    onError: (err) => toast.error(getErrorMessage(err, 'Gagal memicu generate')),
+    onMutate: ({ config }) => {
+      setActiveRatio(config.aspectRatio);
+    },
+    onSuccess: (res) => {
+      setActiveJobId(res.jobId);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: makeClientId(),
+          role: 'assistant',
+          text: 'Aku mulai render carousel dari prompt ini. Hasilnya akan muncul di panel preview.',
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      toast.success('Carousel sedang diproses di background');
+    },
+    onError: (err) => {
+      const message = getErrorMessage(err, 'Gagal memicu generate');
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: makeClientId(),
+          role: 'assistant',
+          text: `Generate gagal: ${message}`,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      toast.error(message);
+    },
   });
 
   // Fase 2 mutations
   const draftMutation = useMutation({
-    mutationFn: ({ prompt: submittedPrompt, config }: GeneratorRequestInput) => {
+    mutationFn: ({ prompt: submittedPrompt, config, conversationContext }: GeneratorRequestInput) => {
       const count = Number(config.slideCount);
       const body: Record<string, unknown> = {
         prompt: submittedPrompt,
         aspectRatio: config.aspectRatio,
         referenceMode: config.referenceMode,
+        ...buildGeneratorPayload(config, conversationContext),
       };
-      const typographyOverride = typographyOverrideFromConfig(config);
-      if (typographyOverride) body.typographyOverride = typographyOverride;
       if (config.slideCount.trim() !== '' && Number.isInteger(count) && count >= 1) body.slideCount = count;
       if (config.referenceMode === 'manual' && config.chosenReferenceId) {
         body.chosenReferenceId = config.chosenReferenceId;
@@ -624,12 +630,34 @@ export default function ContentGeneratorPage() {
     },
     onSuccess: (res) => {
       setDraftSlides(res.slides);
+      setDraftWorkflow(res.workflow ?? null);
       setDraftRatio(res.aspectRatio);
       setPhase('draft_ready');
       setChatFeedback('');
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: makeClientId(),
+          role: 'assistant',
+          text: `Draft siap untuk direview: ${res.slides.length} slide.`,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
       toast.success('Draft siap — review dan revisi teks sebelum generate');
     },
-    onError: (err) => toast.error(getErrorMessage(err, 'Gagal membuat draft')),
+    onError: (err) => {
+      const message = getErrorMessage(err, 'Gagal membuat draft');
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: makeClientId(),
+          role: 'assistant',
+          text: `Draft gagal dibuat: ${message}`,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      toast.error(message);
+    },
   });
 
   const reviseMutation = useMutation({
@@ -640,40 +668,67 @@ export default function ContentGeneratorPage() {
           prompt: activePrompt || prompt.trim(),
           aspectRatio: draftRatio,
           slides: draftSlides,
+          ...(draftWorkflow ? { workflow: draftWorkflow } : {}),
           feedback,
-          typographyOverride: typographyOverrideFromConfig(currentGeneratorConfig),
+          ...buildGeneratorPayload(),
         }),
       }),
     onSuccess: (res) => {
       setDraftSlides(res.slides);
+      setDraftWorkflow(res.workflow ?? null);
       setChatFeedback('');
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: makeClientId(),
+          role: 'user',
+          text: chatFeedback.trim(),
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: makeClientId(),
+          role: 'assistant',
+          text: 'Draft diperbarui mengikuti revisi terbaru.',
+          createdAt: new Date().toISOString(),
+        },
+      ]);
       toast.success('Draft diperbarui');
     },
     onError: (err) => toast.error(getErrorMessage(err, 'Gagal merevisi draft')),
   });
 
-	  const executeRenderMutation = useMutation({
-	    mutationFn: () => {
+  const executeRenderMutation = useMutation({
+    mutationFn: () => {
       const body: Record<string, unknown> = {
         prompt: activePrompt || prompt.trim(),
         aspectRatio: draftRatio,
         requestedSlideCount: draftSlides.length,
-        typographyOverride: typographyOverrideFromConfig(currentGeneratorConfig),
+        ...buildGeneratorPayload(),
         // Send the reviewed/edited SDUI draft as-is so the worker renders
         // exactly this (including each slide's image_object_context).
         sduiSlides: draftSlides,
+        ...(draftWorkflow ? { workflow: draftWorkflow } : {}),
       };
-	      return fetchApi<{ jobId: string }>(`/api/teams/${teamId}/content/carousel/generate`, {
-	        method: 'POST',
-	        body: JSON.stringify(body),
-	      });
-	    },
-	    onMutate: () => {
-	      setActiveRatio(draftRatio);
-	    },
-	    onSuccess: (res) => {
-	      setActiveJobId(res.jobId);
-	      setPhase('done');
+      return fetchApi<{ jobId: string }>(`/api/teams/${teamId}/content/carousel/generate`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    onMutate: () => {
+      setActiveRatio(draftRatio);
+    },
+    onSuccess: (res) => {
+      setActiveJobId(res.jobId);
+      setPhase('done');
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: makeClientId(),
+          role: 'assistant',
+          text: 'Draft yang sudah direview sedang dirender menjadi carousel.',
+          createdAt: new Date().toISOString(),
+        },
+      ]);
       toast.success('Carousel sedang dirender…');
     },
     onError: (err) => toast.error(getErrorMessage(err, 'Gagal memicu render')),
@@ -683,17 +738,17 @@ export default function ContentGeneratorPage() {
     mutationFn: async ({ slideIdx, feedback }: { slideIdx: number; feedback: string }) => {
       if (draftSlides.length === 0) {
         throw new Error('Revisi preview membutuhkan draft source. Generate dengan Planning aktif untuk revisi per slide.');
-	      }
-	      const regenerated = await fetchApi<{ slide: SduiSlide }>(
-	        `/api/teams/${teamId}/content/carousel/jobs/${activeJobId ?? 'draft'}/slides/${slideIdx}/regenerate`,
-	        {
-	          method: 'POST',
+      }
+      const regenerated = await fetchApi<{ slide: SduiSlide }>(
+        `/api/teams/${teamId}/content/carousel/jobs/${activeJobId ?? 'draft'}/slides/${slideIdx}/regenerate`,
+        {
+          method: 'POST',
           body: JSON.stringify({
             prompt: activePrompt || prompt.trim(),
             aspectRatio: draftRatio,
             feedback,
             totalSlides: draftSlides.length,
-            typographyOverride: typographyOverrideFromConfig(currentGeneratorConfig),
+            ...buildGeneratorPayload(),
           }),
         },
       );
@@ -704,18 +759,20 @@ export default function ContentGeneratorPage() {
           prompt: activePrompt || prompt.trim(),
           aspectRatio: draftRatio,
           requestedSlideCount: nextSlides.length,
-          typographyOverride: typographyOverrideFromConfig(currentGeneratorConfig),
+          ...buildGeneratorPayload(),
           sduiSlides: nextSlides,
+          ...(draftWorkflow ? { workflow: withWorkflowSlides(draftWorkflow, nextSlides) } : {}),
         }),
       });
       return { jobId: rendered.jobId, nextSlides };
-	    },
-	    onMutate: ({ slideIdx }) => {
-	      setActiveRatio(draftRatio);
-	      setRegenning((prev) => new Set(prev).add(slideIdx));
-	    },
+    },
+    onMutate: ({ slideIdx }) => {
+      setActiveRatio(draftRatio);
+      setRegenning((prev) => new Set(prev).add(slideIdx));
+    },
     onSuccess: ({ jobId, nextSlides }) => {
       setDraftSlides(nextSlides);
+      setDraftWorkflow((current) => current ? withWorkflowSlides(current, nextSlides) : current);
       setActiveJobId(jobId);
       setPhase('done');
       setSelectedPreviewIndex(null);
@@ -756,11 +813,12 @@ export default function ContentGeneratorPage() {
             aspectRatio: draftRatio,
             feedback: fb,
             totalSlides: draftSlides.length,
-            typographyOverride: typographyOverrideFromConfig(currentGeneratorConfig),
+            ...buildGeneratorPayload(),
           }),
         },
       );
       setDraftSlides(prev => prev.map((s, i) => (i === slideIdx ? res.slide : s)));
+      setDraftWorkflow((current) => current ? withWorkflowSlide(current, res.slide) : current);
       setRegenFeedback(prev => { const n = { ...prev }; delete n[slideIdx]; return n; });
       toast.success(`Slide ${slideIdx + 1} diperbarui`);
     } catch (e) {
@@ -778,6 +836,7 @@ export default function ContentGeneratorPage() {
   const commitEdit = () => {
     if (!editingCell) return;
     const { slideIdx, group, compIdx } = editingCell;
+    let editedSlide: SduiSlide | null = null;
     setDraftSlides(prev => prev.map((s, si) => {
       if (si !== slideIdx) return s;
       const g = (s.nested_groups[group as keyof typeof s.nested_groups] ?? []).map((c, ci) => {
@@ -792,8 +851,10 @@ export default function ContentGeneratorPage() {
         if (c.label !== undefined) return { ...c, label: editingText };
         return { ...c, text: editingText };
       });
-      return { ...s, nested_groups: { ...s.nested_groups, [group]: g } };
+      editedSlide = { ...s, nested_groups: { ...s.nested_groups, [group]: g } };
+      return editedSlide;
     }));
+    if (editedSlide) setDraftWorkflow((current) => current ? withWorkflowSlide(current, editedSlide!) : current);
     setEditingCell(null);
   };
 
@@ -918,6 +979,33 @@ export default function ContentGeneratorPage() {
     }
   };
 
+  const activeWorkflow = draftWorkflow ?? job?.workflow ?? null;
+
+  const handleDownloadWorkflow = () => {
+    if (!activeWorkflow) return;
+    const blob = new Blob([JSON.stringify(activeWorkflow, null, 2)], { type: 'application/json' });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `carousel-workflow-${activeWorkflow.updatedAt.slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+  };
+
+  const handleCopyCaption = async () => {
+    if (!activeWorkflow) return;
+    const caption = [
+      activeWorkflow.caption.hook,
+      activeWorkflow.caption.body,
+      activeWorkflow.caption.cta,
+      activeWorkflow.caption.hashtags.join(' '),
+    ].filter(Boolean).join('\n\n');
+    await navigator.clipboard.writeText(caption);
+    toast.success('Caption disalin');
+  };
+
   const makeClientId = () => {
     if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -925,7 +1013,7 @@ export default function ContentGeneratorPage() {
 
   const persistHistory = (items: ChatHistoryItem[]) => {
     if (!teamId || typeof window === 'undefined') return;
-    window.localStorage.setItem(`content-generator-history:${teamId}`, JSON.stringify(items.slice(0, 5)));
+    window.localStorage.setItem(`content-generator-history:${teamId}`, JSON.stringify(items.slice(0, 8)));
   };
 
   const saveCurrentConfig = () => {
@@ -947,12 +1035,15 @@ export default function ContentGeneratorPage() {
     setBodySize(item.config.bodySize);
     setGenRatio(item.config.aspectRatio);
     setSlideCount(item.config.slideCount);
+    setTags(item.config.tags);
     setRefMode(item.config.referenceMode);
     setChosenRefId(item.config.chosenReferenceId);
+    setLayoutStyle(item.config.layoutStyle);
+    setImagePreference(item.config.imagePreference);
     setIsHistoryOpen(false);
     setActiveJobId(null);
     setDraftSlides([]);
-    setChatMessages([]);
+    setDraftWorkflow(null);
     setChatFeedback('');
     setRegenFeedback({});
     setEditingCell(null);
@@ -966,6 +1057,7 @@ export default function ContentGeneratorPage() {
     if (!text || !canGenerate || !readyToGenerate || isGeneratorProcessing) return;
     const createdAt = new Date().toISOString();
     const submittedConfig = currentGeneratorConfig;
+    const conversationContext = conversationContextFromMessages(chatMessages, text);
     const historyItem: ChatHistoryItem = {
       id: makeClientId(),
       prompt: text,
@@ -974,20 +1066,12 @@ export default function ContentGeneratorPage() {
       planning: planningEnabled,
       config: submittedConfig,
     };
-    const nextHistory = [historyItem, ...chatHistory.filter((item) => item.prompt !== text)].slice(0, 5);
+    const nextHistory = [historyItem, ...chatHistory.filter((item) => item.prompt !== text)].slice(0, 8);
     setChatHistory(nextHistory);
     persistHistory(nextHistory);
     setChatMessages((prev) => [
       ...prev,
       { id: makeClientId(), role: 'user', text, createdAt },
-      {
-        id: makeClientId(),
-        role: 'assistant',
-        text: planningEnabled
-          ? 'Planning aktif. Aku susun draft dulu untuk direview.'
-          : 'Planning nonaktif. Aku langsung render carousel dari prompt ini.',
-        createdAt,
-      },
     ]);
     setActivePrompt(text);
     setPrompt('');
@@ -996,6 +1080,7 @@ export default function ContentGeneratorPage() {
     setIsHistoryOpen(false);
     setActiveJobId(null);
     setDraftSlides([]);
+    setDraftWorkflow(null);
     setChatFeedback('');
     setRegenFeedback({});
     setEditingCell(null);
@@ -1003,9 +1088,9 @@ export default function ContentGeneratorPage() {
     setPreviewFeedback('');
     setPhase('idle');
     if (planningEnabled) {
-      draftMutation.mutate({ prompt: text, config: submittedConfig });
+      draftMutation.mutate({ prompt: text, config: submittedConfig, conversationContext });
     } else {
-      generateMutation.mutate({ prompt: text, config: submittedConfig });
+      generateMutation.mutate({ prompt: text, config: submittedConfig, conversationContext });
     }
   };
 
@@ -1029,7 +1114,7 @@ export default function ContentGeneratorPage() {
             ? 'generate'
             : regenning.size > 0
               ? 'slide-revise'
-              : activeJobId && (!job || job.status === 'pending')
+              : activeJobId && !clientPollTimedOut && (!job || job.status === 'pending')
                 ? 'render'
                 : null;
   const isGeneratorProcessing = processingKind !== null;
@@ -1215,21 +1300,91 @@ export default function ContentGeneratorPage() {
         </div>
       </div>
     );
+    const isFirstTime =
+      !activeJobId && phase !== 'draft_ready' && chatMessages.length === 0 && draftSlides.length === 0;
+    const promptSuggestions = [
+      'Buat carousel edukasi 5 slide tentang cara meningkatkan kualitas lead B2B',
+      'Buat konten editorial tentang kenapa brand perlu sistem content yang konsisten',
+      'Buat carousel promo produk dengan hook kuat, proof, dan CTA yang jelas',
+    ];
+    const renderPromptComposer = (variant: 'welcome' | 'standard' = 'standard') => {
+      const isWelcome = variant === 'welcome';
+      return (
+        <div
+          className={`${isWelcome ? 'w-full rounded-[24px] p-4' : 'rounded-[20px] p-3'} border bg-bg-white-0 shadow-[0px_1px_2px_rgba(10,13,20,0.03)] transition-all ${
+            isPromptFocused && !promptDisabled
+              ? 'border-primary-base ring-2 ring-primary-base/20'
+              : 'border-stroke-soft-200'
+          } ${promptDisabled ? 'bg-bg-weak-50' : ''}`}
+        >
+          <textarea
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onFocus={() => setIsPromptFocused(true)}
+            onBlur={() => setIsPromptFocused(false)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                if (!readyToGenerate && promptLen > 0) {
+                  toast.error('Lengkapi Brand Kit dulu sebelum generate');
+                  return;
+                }
+                handleSubmitChat();
+              }
+            }}
+            maxLength={2000}
+            placeholder={isWelcome ? 'Tulis ide konten, target audience, atau pesan utama...' : promptPlaceholder}
+            disabled={promptDisabled}
+            className={`${isWelcome ? 'min-h-[104px]' : 'min-h-[76px]'} w-full resize-none bg-transparent font-inter text-[14px] font-normal leading-5 text-text-strong-950 outline-none placeholder:text-text-soft-400 disabled:cursor-not-allowed disabled:text-text-disabled-300 disabled:placeholder:text-text-disabled-300`}
+          />
+          <div className="mt-3 flex items-center gap-2 border-t border-stroke-soft-200 pt-3">
+            <div className="flex flex-1 items-center gap-2 text-[15px] leading-6 text-text-soft-400">
+              <button
+                type="button"
+                disabled={configLocked}
+                className={`relative h-5 w-8 rounded-full transition-colors disabled:opacity-60 ${
+                  planningEnabled ? 'bg-primary-accent' : 'bg-bg-weak-50'
+                }`}
+                onClick={() => setPlanningEnabled((current) => !current)}
+                aria-label="Toggle planning"
+              >
+                <span
+                  className={`absolute top-1 size-3 rounded-full bg-bg-white-0 shadow-[0px_1px_2px_rgba(10,13,20,0.12)] transition-all ${
+                    planningEnabled ? 'left-[16px]' : 'left-1'
+                  }`}
+                />
+              </button>
+              <span>Planning</span>
+            </div>
+            <span className="shrink-0 text-xs leading-4 text-text-soft-400">{promptLen}/2000</span>
+            <button
+              type="button"
+              disabled={!canSubmitPrompt}
+              className="flex size-8 items-center justify-center rounded-ui border border-stroke-soft-200 bg-bg-white-0 text-text-sub-600 transition-all hover:bg-bg-weak-50 hover:text-text-strong-950 disabled:cursor-not-allowed disabled:bg-bg-weak-50 disabled:text-text-disabled-300"
+              onClick={handleSubmitChat}
+              aria-label="Send prompt"
+            >
+              {isGeneratorProcessing ? <Loader2 className="animate-spin" size={18} /> : <ArrowUp size={18} />}
+            </button>
+          </div>
+        </div>
+      );
+    };
 
     return (
       <div className="flex min-h-0 flex-1 pt-6">
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 rounded-panel bg-stroke-soft-200 p-4 lg:min-h-[640px] lg:grid-cols-[minmax(0,1fr)_235px] xl:min-h-[681px]">
           <div className="flex min-h-0 flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="relative w-full max-w-[296px]">
+              <div className="relative w-full max-w-[184px]">
                 <button
                   type="button"
                   disabled={isGeneratorProcessing}
-                  className="flex h-9 w-full items-center gap-2 rounded-ui border border-stroke-soft-200 bg-bg-white-0 px-3 text-sm text-text-strong-950 shadow-[0px_1px_2px_rgba(10,13,20,0.03)] transition-all hover:bg-bg-weak-50 disabled:cursor-not-allowed disabled:bg-bg-weak-50 disabled:text-text-disabled-300"
+                  className="flex h-9 w-full items-center gap-2 rounded-ui border border-stroke-soft-200 bg-bg-white-0 px-2.5 text-sm text-text-strong-950 shadow-[0px_1px_2px_rgba(10,13,20,0.03)] transition-all hover:bg-bg-weak-50 disabled:cursor-not-allowed disabled:bg-bg-weak-50 disabled:text-text-disabled-300"
                   onClick={() => setIsHistoryOpen((current) => !current)}
                 >
-                  <History size={18} className="text-text-sub-600" />
-                  <span className="min-w-0 flex-1 truncate">History Chat</span>
+                  <History size={16} className="text-text-sub-600" />
+                  <span className="min-w-0 flex-1 truncate">History</span>
                   <ChevronRight size={16} className={`text-text-sub-600 transition-transform ${isHistoryOpen ? '-rotate-90' : 'rotate-90'}`} />
                 </button>
                 {isHistoryOpen && (
@@ -1242,12 +1397,12 @@ export default function ContentGeneratorPage() {
                           key={item.id}
                           type="button"
                           disabled={isGeneratorProcessing}
-                          className="flex w-full flex-col gap-0.5 rounded-ui px-3 py-2 text-left transition-colors hover:bg-bg-weak-50 disabled:cursor-not-allowed disabled:text-text-disabled-300"
+                          className="flex w-full flex-col gap-0.5 rounded-ui px-2.5 py-2 text-left transition-colors hover:bg-bg-weak-50 disabled:cursor-not-allowed disabled:text-text-disabled-300"
                           onClick={() => applyHistoryItem(item)}
                         >
                           <span className="w-full truncate text-sm font-medium text-text-strong-950">{item.title}</span>
                           <span className="text-xs text-text-soft-400">
-                            {item.planning ? 'Planning on' : 'Planning off'} · {item.config.aspectRatio} · {item.config.slideCount} slide
+                            {item.planning ? 'Planning on' : 'Planning off'} · {item.config.aspectRatio} · {item.config.slideCount} slide · {LAYOUT_STYLE_OPTIONS.find((option) => option.value === item.config.layoutStyle)?.label ?? 'Auto'}
                           </span>
                         </button>
                       ))
@@ -1304,10 +1459,34 @@ export default function ContentGeneratorPage() {
                   </div>
                 )}
 
-                {!activeJobId && phase !== 'draft_ready' && chatMessages.length === 0 && (
-                  <div className="flex min-h-[220px] flex-1 items-center justify-center rounded-panel">
-                    <div className="flex size-12 items-center justify-center rounded-full bg-bg-white-0 text-text-soft-400 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
-                      <Sparkles size={22} />
+                {isFirstTime && (
+                  <div className="flex min-h-[440px] flex-1 flex-col items-center justify-center gap-6 rounded-panel border border-stroke-soft-200 bg-bg-white-0 px-6 py-10 text-center">
+                    <div className="flex size-16 items-center justify-center rounded-full bg-alpha-primary-10 text-primary-base">
+                      <Sparkles size={30} />
+                    </div>
+                    <div className="max-w-[560px]">
+                      <h2 className="text-[28px] font-semibold leading-[1.1] text-text-strong-950">
+                        Start a new content session
+                      </h2>
+                      <p className="mt-2 text-sm leading-6 text-text-sub-600">
+                        Tulis arah konten, target audience, atau goal campaign. Chat di window ini disimpan dan ikut jadi context AI.
+                      </p>
+                    </div>
+                    <div className="grid w-full max-w-[860px] gap-3 md:grid-cols-3">
+                      {promptSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          disabled={promptDisabled}
+                          onClick={() => setPrompt(suggestion)}
+                          className="min-h-[92px] rounded-panel border border-stroke-soft-200 bg-bg-weak-50 p-4 text-left text-sm leading-6 text-text-sub-600 transition-colors hover:border-primary-base hover:bg-bg-white-0 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="w-full max-w-[760px]">
+                      {renderPromptComposer('welcome')}
                     </div>
                   </div>
                 )}
@@ -1316,6 +1495,7 @@ export default function ContentGeneratorPage() {
 
                 {phase === 'draft_ready' && draftSlides.length > 0 && (
                   <div className="flex flex-col gap-3">
+                    {renderWorkflowPanel(draftWorkflow)}
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-semibold text-text-strong-950">Review Draft Konten</p>
                       <Badge variant="warning">{draftSlides.length} slide</Badge>
@@ -1444,7 +1624,7 @@ export default function ContentGeneratorPage() {
                           leftIcon={executeRenderMutation.isPending ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
                           onClick={() => executeRenderMutation.mutate()}
                         >
-                          {executeRenderMutation.isPending ? 'Mengirim' : 'Eksekusi Render'}
+                          {executeRenderMutation.isPending ? 'Mengirim' : 'Approve & Render'}
                         </Button>
                       </div>
                     </div>
@@ -1453,60 +1633,7 @@ export default function ContentGeneratorPage() {
               </div>
             </div>
 
-            <div
-              className={`rounded-[20px] border bg-bg-white-0 p-3 shadow-[0px_1px_2px_rgba(10,13,20,0.03)] transition-all ${
-                isPromptFocused && !promptDisabled
-                  ? 'border-primary-base ring-2 ring-primary-base/20'
-                  : 'border-stroke-soft-200'
-              } ${promptDisabled ? 'bg-bg-weak-50' : ''}`}
-            >
-              <textarea
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                onFocus={() => setIsPromptFocused(true)}
-                onBlur={() => setIsPromptFocused(false)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    handleSubmitChat();
-                  }
-                }}
-                maxLength={2000}
-                placeholder={promptPlaceholder}
-                disabled={promptDisabled}
-                className="min-h-[76px] w-full resize-none bg-transparent font-inter text-[14px] font-normal leading-5 text-text-strong-950 outline-none placeholder:text-text-soft-400 disabled:cursor-not-allowed disabled:text-text-disabled-300 disabled:placeholder:text-text-disabled-300"
-              />
-              <div className="mt-3 flex items-center gap-2 border-t border-stroke-soft-200 pt-3">
-                  <div className="flex flex-1 items-center gap-2 text-[15px] leading-6 text-text-soft-400">
-	                    <button
-	                      type="button"
-		                      disabled={configLocked}
-	                      className={`relative h-5 w-8 rounded-full transition-colors disabled:opacity-60 ${
-                          planningEnabled ? 'bg-primary-accent' : 'bg-bg-weak-50'
-                        }`}
-	                      onClick={() => setPlanningEnabled((current) => !current)}
-	                      aria-label="Toggle planning"
-	                    >
-	                      <span
-                          className={`absolute top-1 size-3 rounded-full bg-bg-white-0 shadow-[0px_1px_2px_rgba(10,13,20,0.12)] transition-all ${
-                            planningEnabled ? 'left-[16px]' : 'left-1'
-                          }`}
-                        />
-	                    </button>
-	                    <span>Planning</span>
-                  </div>
-                  <span className="shrink-0 text-xs leading-4 text-text-soft-400">{promptLen}/2000</span>
-                  <button
-	                    type="button"
-		                    disabled={!canSubmitPrompt}
-	                    className="flex size-8 items-center justify-center rounded-ui border border-stroke-soft-200 bg-bg-white-0 text-text-sub-600 transition-all hover:bg-bg-weak-50 hover:text-text-strong-950 disabled:cursor-not-allowed disabled:bg-bg-weak-50 disabled:text-text-disabled-300"
-	                    onClick={handleSubmitChat}
-	                    aria-label="Send prompt"
-	                  >
-		                    {isGeneratorProcessing ? <Loader2 className="animate-spin" size={18} /> : <ArrowUp size={18} />}
-	                  </button>
-              </div>
-            </div>
+            {!isFirstTime && renderPromptComposer('standard')}
             {!canGenerate && (
               <p className="text-xs text-text-soft-400">
                 Peran Viewer hanya dapat melihat. Hubungi Admin untuk men-generate konten.
@@ -1539,6 +1666,61 @@ export default function ContentGeneratorPage() {
                     />
                   </div>
                   {renderCounter('Slide Count', displayedSlideCount, setSlideCount, 1, maxSlidesAllowed, configLocked)}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium leading-5 text-text-sub-600">Tags</label>
+                    <Textarea
+                      value={tags}
+                      onChange={(event) => setTags(event.target.value)}
+                      placeholder="Promo, Insight, Tips"
+                      className="min-h-[68px] resize-none text-sm"
+                      disabled={configLocked}
+                    />
+                    <p className="text-[11px] leading-4 text-text-soft-400">
+                      Tag pojok kanan atas. Pisahkan dengan koma.
+                    </p>
+                  </div>
+                </div>
+                <div className="h-px bg-stroke-soft-200" />
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm font-medium leading-5 text-text-strong-950">Style Preference</p>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium leading-5 text-text-sub-600">Layout Style</label>
+                    <Select
+                      value={layoutStyle}
+                      onChange={(event) => setLayoutStyle(event.target.value as LayoutStylePreference)}
+                      options={LAYOUT_STYLE_OPTIONS.map((option) => ({
+                        value: option.value,
+                        label: option.label,
+                      }))}
+                      disabled={configLocked}
+                    />
+                    <p className="text-[11px] leading-4 text-text-soft-400">
+                      {LAYOUT_STYLE_OPTIONS.find((option) => option.value === layoutStyle)?.description}
+                    </p>
+                  </div>
+                  <div className="flex items-start justify-between gap-3 rounded-lg border border-stroke-soft-200 bg-bg-weak-50 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium leading-5 text-text-strong-950">Image Mode</p>
+                      <p className="text-[11px] leading-4 text-text-soft-400">
+                        {IMAGE_PREFERENCE_OPTIONS.find((option) => option.value === imagePreference)?.description}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={configLocked}
+                      className={`relative mt-0.5 h-5 w-8 rounded-full transition-colors disabled:opacity-60 ${
+                        imagePreference === 'all_slides_image' ? 'bg-primary-accent' : 'bg-bg-weak-100'
+                      }`}
+                      onClick={() => setImagePreference((current) => current === 'all_slides_image' ? 'auto' : 'all_slides_image')}
+                      aria-label="Toggle all slides image"
+                    >
+                      <span
+                        className={`absolute top-1 size-3 rounded-full bg-bg-white-0 shadow-[0px_1px_2px_rgba(10,13,20,0.12)] transition-all ${
+                          imagePreference === 'all_slides_image' ? 'left-[16px]' : 'left-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
                 <div className="h-px bg-stroke-soft-200" />
                 <div className="flex flex-col gap-2">
@@ -1602,6 +1784,65 @@ export default function ContentGeneratorPage() {
     );
   }
 
+  function renderWorkflowPanel(workflow: CarouselWorkflowArtifact | null) {
+    if (!workflow) return null;
+    const requiredImages = workflow.slides.filter((slide) => slide.sduiSlide.image_requirement === 'required').length;
+    const renderedImages = workflow.slides.filter((slide) => Boolean(slide.renderedImageUrl)).length;
+    return (
+      <div className="rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-text-strong-950">Hermes Workflow</p>
+            <p className="text-xs text-text-sub-600">
+              {workflow.workflowStage} · {workflow.source} · {requiredImages} required image · {renderedImages} rendered
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" leftIcon={<Download size={13} />} onClick={handleDownloadWorkflow}>
+              Workflow JSON
+            </Button>
+            <Button variant="secondary" size="sm" leftIcon={<Copy size={13} />} onClick={() => void handleCopyCaption()}>
+              Copy Caption
+            </Button>
+          </div>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="rounded-lg border border-stroke-soft-200 bg-bg-weak-50 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase text-text-soft-400">Outline</p>
+            <div className="space-y-2">
+              {workflow.outline.map((item) => (
+                <div key={item.slide_number} className="text-xs leading-5 text-text-sub-600">
+                  <span className="font-semibold text-text-strong-950">{item.slide_number}. {item.headline}</span>
+                  {item.body && <span className="block">{item.body}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-lg border border-stroke-soft-200 bg-bg-weak-50 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase text-text-soft-400">Prompts</p>
+            <div className="max-h-[220px] space-y-2 overflow-y-auto">
+              {workflow.slidePrompts.map((prompt) => (
+                <details key={prompt.slide_number} className="rounded-md bg-bg-white-0 p-2 text-xs text-text-sub-600">
+                  <summary className="cursor-pointer font-semibold text-text-strong-950">Slide {prompt.slide_number}</summary>
+                  <p className="mt-1 whitespace-pre-wrap leading-5">{prompt.prompt}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-lg border border-stroke-soft-200 bg-bg-weak-50 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase text-text-soft-400">Caption</p>
+            <div className="space-y-2 text-xs leading-5 text-text-sub-600">
+              <p className="font-semibold text-text-strong-950">{workflow.caption.hook}</p>
+              <p className="whitespace-pre-wrap">{workflow.caption.body}</p>
+              <p>{workflow.caption.cta}</p>
+              <p className="text-primary-base">{workflow.caption.hashtags.join(' ')}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
 	  function renderJobPanel() {
     if (!activeJobId) {
       return (
@@ -1633,12 +1874,39 @@ export default function ContentGeneratorPage() {
           )}
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {isPending && (
+          {renderWorkflowPanel(job?.workflow ?? null)}
+
+          {isPending && !clientPollTimedOut && (
             <div className="flex items-center gap-3 rounded-panel border border-stroke-soft-200 bg-bg-weak-50 p-4">
               <Loader2 className="animate-spin text-primary-base" size={18} />
               <p className="text-sm text-text-sub-600">
                 AI sedang menyusun rencana dan me-render tiap slide…
               </p>
+            </div>
+          )}
+
+          {isPending && clientPollTimedOut && (
+            <div className="flex flex-col gap-3 rounded-panel border border-state-warning-border bg-bg-white-0 p-4">
+              <div className="flex items-start gap-2 text-sm text-text-sub-600">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-state-warning-base" />
+                <span>
+                  Proses memakan waktu lebih lama dari biasanya dan belum memberi hasil.
+                  Server mungkin sedang sibuk — coba cek lagi, atau mulai generate baru.
+                </span>
+              </div>
+              <div>
+                <Button
+                  variant="secondary"
+                  leftIcon={<RotateCcw size={14} />}
+                  onClick={() => {
+                    setClientPollTimedOut(false);
+                    pollCapReachedRef.current = false;
+                    void jobQuery.refetch();
+                  }}
+                >
+                  Cek lagi
+                </Button>
+              </div>
             </div>
           )}
 
@@ -1868,6 +2136,56 @@ export default function ContentGeneratorPage() {
         </div>
       </div>
     );
+    const typographyRoleRow = (role: ExtraTypographyRole, label: string) => {
+      const current = extraTypography[role];
+      return (
+        <div className="grid grid-cols-1 gap-3 rounded-panel border border-stroke-soft-200 bg-bg-weak-50 p-3 lg:grid-cols-[minmax(0,1fr)_150px_120px]">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-text-strong-950">{label}</label>
+            <Select
+              value={current.fontFamily}
+              onChange={(event) =>
+                setExtraTypography((prev) => ({
+                  ...prev,
+                  [role]: { ...prev[role], fontFamily: event.target.value },
+                }))
+              }
+              options={fontFamilyOptions.length ? fontFamilyOptions : [{ label: 'Unggah font dulu', value: '' }]}
+              disabled={!canManage}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-text-strong-950">Warna</label>
+            <Input
+              value={current.color}
+              onChange={(event) =>
+                setExtraTypography((prev) => ({
+                  ...prev,
+                  [role]: { ...prev[role], color: event.target.value },
+                }))
+              }
+              disabled={!canManage}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-text-strong-950">Size</label>
+            <Input
+              type="number"
+              min="8"
+              max="180"
+              value={current.sizePx}
+              onChange={(event) =>
+                setExtraTypography((prev) => ({
+                  ...prev,
+                  [role]: { ...prev[role], sizePx: event.target.value },
+                }))
+              }
+              disabled={!canManage}
+            />
+          </div>
+        </div>
+      );
+    };
     return (
       <div className="flex max-w-[760px] flex-col gap-6">
         <Card>
@@ -2082,7 +2400,12 @@ export default function ContentGeneratorPage() {
                     TAG
                   </span>
                   {brandKit?.logoUrl && logoPlacement !== 'none' && (
-                    <img src={brandKit.logoUrl} alt="Logo preview" className="h-6 w-14 object-contain" />
+                    <img
+                      src={brandKit.logoUrl}
+                      alt="Logo preview"
+                      className="w-16 object-contain"
+                      style={{ height: `${Math.max(14, Math.min(48, Number(logoSizePx) || 24))}px` }}
+                    />
                   )}
                 </div>
                 <div className="mt-10">
@@ -2111,13 +2434,24 @@ export default function ContentGeneratorPage() {
             </div>
 
             {/* Chrome */}
-            <div className="grid grid-cols-1 gap-4 border-t border-stroke-soft-200 pt-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 border-t border-stroke-soft-200 pt-4 sm:grid-cols-4">
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-text-strong-950">Posisi Logo</label>
                 <Select
                   value={logoPlacement}
                   onChange={(e) => setLogoPlacement(e.target.value)}
                   options={LOGO_PLACEMENT_OPTIONS}
+                  disabled={!canManage}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-text-strong-950">Ukuran Logo</label>
+                <Input
+                  type="number"
+                  min="12"
+                  max="180"
+                  value={logoSizePx}
+                  onChange={(e) => setLogoSizePx(e.target.value)}
                   disabled={!canManage}
                 />
               </div>
@@ -2236,6 +2570,17 @@ export default function ContentGeneratorPage() {
                 {colorRow('Warna Background', bgColor, setBgColor)}
                 {colorRow('Warna Pagination', paginationColor, setPaginationColor)}
                 {colorRow('Tag/Footer Text', metaColor, setMetaColor)}
+              </div>
+              <div className="flex flex-col gap-3 border-t border-stroke-soft-200 pt-4">
+                <p className="text-sm font-medium text-text-strong-950">Component Text Roles</p>
+                {typographyRoleRow('tag', 'Tag')}
+                {typographyRoleRow('quote', 'Quote')}
+                {typographyRoleRow('list', 'List')}
+                {typographyRoleRow('cta', 'CTA')}
+                {typographyRoleRow('card', 'Card')}
+                {typographyRoleRow('stat', 'Stat')}
+                {typographyRoleRow('caption', 'Caption')}
+                {typographyRoleRow('chrome', 'Chrome')}
               </div>
               </div>
             </details>

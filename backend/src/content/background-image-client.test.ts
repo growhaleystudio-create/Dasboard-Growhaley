@@ -420,6 +420,51 @@ describe('DefaultBackgroundImageClient', () => {
     expect(prompt.toLowerCase()).toContain('no text');
   });
 
+  it('strengthens doodle prompts so they do not fall back to generic illustration', async () => {
+    const capturedPrompts: string[] = [];
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+        if (init?.body) {
+          const body = JSON.parse(init.body as string) as {
+            instances: { prompt: string }[];
+          };
+          capturedPrompts.push(body.instances[0]?.prompt ?? '');
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            predictions: [
+              {
+                bytesBase64Encoded: Buffer.from('x').toString('base64'),
+              },
+            ],
+          }),
+        };
+      }),
+    );
+
+    const deps = makeDeps();
+    const client = new DefaultBackgroundImageClient(deps);
+
+    await client.generate(
+      'team-1',
+      makeRequest({
+        kind: 'content',
+        prompt: 'A doodle illustration about relationship repair',
+        stylePrompt: 'doodle',
+      }),
+      signal,
+    );
+
+    const prompt = capturedPrompts[0] ?? '';
+    expect(prompt).toContain('true hand-drawn doodle');
+    expect(prompt).toContain('loose black ink sketch lines');
+    expect(prompt).toContain('Avoid photorealism');
+    expect(prompt).not.toContain('If the user did not request a specific visual style');
+  });
+
   it('sets personGeneration=dont_allow in the Imagen request body', async () => {
     const capturedBodies: unknown[] = [];
 

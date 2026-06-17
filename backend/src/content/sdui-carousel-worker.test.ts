@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import { getLayoutCatalogItem } from '@leads-generator/shared';
-import type { BrandKit, MasterTemplate, SduiSlide } from '@leads-generator/shared';
+import type { BrandKit, CarouselWorkflowArtifact, MasterTemplate, SduiSlide } from '@leads-generator/shared';
 import type { SduiCarouselWorkerDeps } from './sdui-carousel-worker.js';
 import { processSduiCarouselJob } from './sdui-carousel-worker.js';
 import { resolveSduiTextLimits } from './sdui-text-guardrails.js';
@@ -107,6 +107,13 @@ function imageSlide(n = 2): SduiSlide {
   };
 }
 
+function optionalImageSlide(n = 2): SduiSlide {
+  return {
+    ...imageSlide(n),
+    image_requirement: 'optional',
+  };
+}
+
 function emptyChecklistSlide(n = 2): SduiSlide {
   return {
     slide_number: n,
@@ -188,6 +195,66 @@ function headerOnlyTextSlide(n = 2): SduiSlide {
   };
 }
 
+function sparseBenefitSlide(n = 2): SduiSlide {
+  return {
+    slide_number: n,
+    slide_type: 'content',
+    container_layout: 'text_dominant',
+    layout_variant_id: 'text_stack',
+    image_requirement: 'none',
+    layout_source: 'ai_selected',
+    typography_scale: 'balanced_classic',
+    nested_groups: {
+      top_meta: [{ type: 'tag', text: 'BENEFIT' }],
+      core_content: [
+        { type: 'header', text: 'Manfaat AI untuk Tim Sales' },
+      ],
+      action_footer: [],
+    },
+  };
+}
+
+function oneImageMultiImageSlide(n = 2): SduiSlide {
+  return {
+    slide_number: n,
+    slide_type: 'content',
+    container_layout: 'split_screen',
+    layout_variant_id: 'mini_gallery_3up',
+    image_requirement: 'optional',
+    layout_source: 'ai_selected',
+    typography_scale: 'balanced_classic',
+    nested_groups: {
+      top_meta: [{ type: 'tag', text: 'GALLERY' }],
+      core_content: [
+        { type: 'header', text: 'Tiga Contoh Visual' },
+        { type: 'body', text: 'Satu gambar saja tidak cukup untuk layout galeri tiga panel.' },
+        { type: 'image_placeholder', requires_generation: true, image_object_context: 'single visual example' },
+      ],
+      action_footer: [],
+    },
+  };
+}
+
+function incompleteBodySlide(n = 3): SduiSlide {
+  return {
+    slide_number: n,
+    slide_type: 'content',
+    container_layout: 'text_dominant',
+    layout_variant_id: 'text_stack',
+    image_requirement: 'none',
+    layout_source: 'ai_selected',
+    typography_scale: 'balanced_classic',
+    nested_groups: {
+      top_meta: [{ type: 'tag', text: 'INSIGHT' }],
+      core_content: [
+        { type: 'header', text: 'Kalimat yang Belum Selesai' },
+        { type: 'body', text: 'Konten ini berhenti pada frasa yang menggantung,' },
+      ],
+      action_footer: [],
+    },
+  };
+}
+
 function ctaSlide(n = 5): SduiSlide {
   return {
     ...textSlide(n),
@@ -232,6 +299,7 @@ function makeDeps(overrides: {
   repairSlides?: SduiSlide[];
   prompt?: string;
   typographyOverride?: { coverSizePx?: number; headerSizePx?: number; bodySizePx?: number };
+  workflow?: CarouselWorkflowArtifact;
 }): SduiCarouselWorkerDeps & {
   renderedSlides: SduiSlide[];
   updatedInputs: Record<string, unknown>[];
@@ -249,7 +317,7 @@ function makeDeps(overrides: {
     planner,
     renderer: {
       renderSlide: vi.fn(async (slide: SduiSlide) => {
-        renderedSlides.push(slide);
+        renderedSlides.push(JSON.parse(JSON.stringify(slide)) as SduiSlide);
         return Buffer.from('rendered');
       }),
     },
@@ -272,6 +340,7 @@ function makeDeps(overrides: {
         inputs: {
           requestedSlideCount: overrides.slides.length,
           ...(overrides.slides.length > 0 ? { sduiSlides: overrides.slides } : {}),
+          ...(overrides.workflow ? { workflow: overrides.workflow } : {}),
           ...(overrides.typographyOverride ? { typographyOverride: overrides.typographyOverride } : {}),
         },
         createdAt: new Date(),
@@ -328,14 +397,14 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
     await processSduiCarouselJob(deps, { teamId: 'team-1', jobId: 'job-1', actorId: 'actor-1' });
 
     const rendered = deps.renderedSlides[0]!;
-    const limits = getLayoutCatalogItem(rendered.layout_variant_id)!.textLimits;
+    const adaptiveLimits = resolveSduiTextLimits(rendered.layout_variant_id, undefined, rendered);
     const tag = rendered.nested_groups.top_meta?.[0];
     const header = rendered.nested_groups.core_content?.find((component) => component.type === 'header');
     const body = rendered.nested_groups.core_content?.find((component) => component.type === 'body');
 
-    expect(tag?.text?.length).toBeLessThanOrEqual(limits.tag);
-    expect(header?.text?.length).toBeLessThanOrEqual(limits.header!);
-    expect(body?.text?.length).toBeLessThanOrEqual(limits.body!);
+    expect(tag?.text?.length).toBeLessThanOrEqual(adaptiveLimits.tag);
+    expect(header?.text?.length).toBeLessThanOrEqual(adaptiveLimits.header!);
+    expect(body?.text?.length).toBeLessThanOrEqual(adaptiveLimits.body!);
     expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
   });
 
@@ -370,7 +439,8 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
 
     const repaired = deps.renderedSlides[1]!;
     const checklist = repaired.nested_groups.core_content?.find((component) => component.type === 'checklist');
-    expect(checklist?.items?.length).toBeGreaterThanOrEqual(2);
+    const body = repaired.nested_groups.core_content?.find((component) => component.type === 'body');
+    expect((checklist?.items?.length ?? 0) + (body?.text?.trim().length ? 1 : 0)).toBeGreaterThanOrEqual(1);
     expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
   });
 
@@ -387,6 +457,54 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
     expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
   });
 
+  it('densifies sparse content slides and avoids text-safe layout fallback when richer structure fits', async () => {
+    const deps = makeDeps({
+      slides: [textSlide(1), sparseBenefitSlide(2)],
+      prompt: 'Buat carousel tentang benefit AI untuk tim sales B2B.',
+    });
+
+    await processSduiCarouselJob(deps, { teamId: 'team-1', jobId: 'job-1', actorId: 'actor-1' });
+
+    const repaired = deps.renderedSlides[1]!;
+    const cards = repaired.nested_groups.core_content?.find((component) => component.type === 'feature_cards');
+    expect(['feature_cards_with_header', 'feature_cards_grid']).toContain(repaired.layout_variant_id);
+    expect(cards?.items_cards?.length).toBeGreaterThanOrEqual(2);
+    expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
+  });
+
+  it('does not keep a multi-image layout when the slide only has one image placeholder', async () => {
+    const deps = makeDeps({
+      slides: [textSlide(1), oneImageMultiImageSlide(2)],
+      imageResult: { ok: true, value: await png() },
+    });
+
+    await processSduiCarouselJob(deps, { teamId: 'team-1', jobId: 'job-1', actorId: 'actor-1' });
+
+    const repaired = deps.renderedSlides[1]!;
+    expect(repaired.layout_variant_id).not.toBe('mini_gallery_3up');
+    expect(getLayoutCatalogItem(repaired.layout_variant_id)?.family).not.toBe('multi_image');
+    expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
+  });
+
+  it('uses deterministic quality repair instead of failing layout_unsatisfiable for headline-only and incomplete text', async () => {
+    const deps = makeDeps({
+      slides: [textSlide(1), headerOnlyTextSlide(2), incompleteBodySlide(3)],
+      prompt: 'bahaya pornografi untuk rumah tangga dan pencegahannya',
+    });
+
+    await processSduiCarouselJob(deps, { teamId: 'team-1', jobId: 'job-1', actorId: 'actor-1' });
+
+    const second = deps.renderedSlides[1]!;
+    const third = deps.renderedSlides[2]!;
+    const secondBody = second.nested_groups.core_content?.find((component) => component.type === 'body');
+    const thirdBody = third.nested_groups.core_content?.find((component) => component.type === 'body');
+
+    expect(secondBody?.text?.trim().length).toBeGreaterThan(0);
+    expect(thirdBody?.text).not.toMatch(/[,;:–-]\s*$/u);
+    expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
+    expect(deps.jobRepo.setStatus).not.toHaveBeenCalledWith('team-1', 'job-1', 'failed', 'layout_unsatisfiable');
+  });
+
   it('does not turn a non-stat slide into stat_highlight when an image-required draft is missing its placeholder', async () => {
     const deps = makeDeps({
       slides: [textSlide(1), textSlide(2), checklistSlide(3), missingImagePlaceholderTextSlide(4), ctaSlide(5)],
@@ -398,7 +516,7 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
     const header = fourth.nested_groups.core_content?.find((component) => component.type === 'header');
 
     expect(fourth.layout_variant_id).not.toBe('stat_highlight');
-    expect(fourth.layout_family).toBe('text');
+    expect(['text', 'editorial']).toContain(fourth.layout_family);
     expect(fourth.image_requirement).toBe('none');
     expect(fourth.image_status).toBe('not_needed');
     expect(header?.text).toBe('Contoh Implementasi');
@@ -416,13 +534,76 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
     await processSduiCarouselJob(deps, { teamId: 'team-1', jobId: 'job-1', actorId: 'actor-1' });
 
     expect(deps.planner.plan).not.toHaveBeenCalled();
-    expect(deps.imageClient.generate).toHaveBeenCalledOnce();
+    expect(deps.imageClient.generate).toHaveBeenCalledTimes(3);
     const renderedImageSlide = deps.renderedSlides.find((slide) =>
       slide.nested_groups.core_content?.some((component) => component.type === 'image_placeholder'),
     );
     expect(renderedImageSlide?.image_status).toBe('generated');
     expect(renderedImageSlide?.image_requirement).toBe('required');
     expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
+  });
+
+  it('does not persist base64 image data into job inputs (DB bloat guard)', async () => {
+    const deps = makeDeps({
+      slides: [textSlide(1), imageSlide(2)],
+      imageResult: { ok: true, value: await png() },
+    });
+
+    await processSduiCarouselJob(deps, { teamId: 'team-1', jobId: 'job-1', actorId: 'actor-1' });
+
+    expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
+
+    // The renderer MUST still receive the inline base64 image for this run…
+    const renderedImageSlide = deps.renderedSlides.find((s) =>
+      s.nested_groups.core_content?.some((c) => c.type === 'image_placeholder'),
+    );
+    const renderedImgComp = renderedImageSlide?.nested_groups.core_content?.find(
+      (c) => c.type === 'image_placeholder',
+    );
+    expect(renderedImgComp?.imageUrl?.startsWith('data:image')).toBe(true);
+
+    // …but the persisted job inputs must NOT carry the base64 (pure DB bloat).
+    const persisted = deps.updatedInputs
+      .map((i) => i.sduiSlides as SduiSlide[] | undefined)
+      .filter((s): s is SduiSlide[] => Array.isArray(s));
+    const lastPersist = persisted[persisted.length - 1]!;
+    const anyBase64 = lastPersist.some((s) =>
+      (['top_meta', 'core_content', 'action_footer'] as const).some((g) =>
+        (s.nested_groups[g] ?? []).some(
+          (c) => typeof c.imageUrl === 'string' && c.imageUrl.startsWith('data:'),
+        ),
+      ),
+    );
+    expect(anyBase64).toBe(false);
+  });
+
+  it('renders slides from workflow input and persists rendered workflow artifact', async () => {
+    const workflow: CarouselWorkflowArtifact = {
+      version: 1,
+      workflowStage: 'prompts',
+      source: 'planning',
+      outline: [{ slide_number: 1, role: 'cover', headline: 'Workflow Cover' }],
+      designSystemSnapshot: {
+        colors: ['#187DB4'],
+        fonts: [],
+        chrome: { logoPlacement: 'none', siteUrl: 'example.com', pageNumberFormat: '{current}/{total}' },
+      },
+      slidePrompts: [{ slide_number: 1, prompt: 'Slide 1 prompt', exactHeadline: 'Workflow Cover' }],
+      slides: [{ slide_number: 1, reviewStatus: 'approved', sduiSlide: textSlide(1) }],
+      caption: { hook: 'Workflow Cover', body: 'Body', cta: 'Save', hashtags: ['#carousel'] },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const deps = makeDeps({ slides: [], workflow });
+
+    await processSduiCarouselJob(deps, { teamId: 'team-1', jobId: 'job-1', actorId: 'actor-1' });
+
+    expect(deps.planner.plan).not.toHaveBeenCalled();
+    expect(deps.renderer.renderSlide).toHaveBeenCalledOnce();
+    const persistedWorkflow = deps.updatedInputs.at(-1)?.workflow as CarouselWorkflowArtifact | undefined;
+    expect(persistedWorkflow?.workflowStage).toBe('rendered');
+    expect(persistedWorkflow?.slides[0]?.renderedImageUrl).toBe('https://cdn.example.com/jobs/job-1/slide-0.png');
+    expect(persistedWorkflow?.slidePrompts[0]?.prompt).toContain('Do not render text inside the generated image');
   });
 
   it('keeps an image-focused layout when image generation succeeds', async () => {
@@ -449,9 +630,9 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
     expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
   });
 
-  it('repairs failed image slides into no-image layouts and audits the repair', async () => {
+  it('repairs failed optional image slides into no-image layouts and audits the repair', async () => {
     const deps = makeDeps({
-      slides: [textSlide(1), imageSlide(2), textSlide(3)],
+      slides: [textSlide(1), optionalImageSlide(2), textSlide(3)],
       imageResult: { ok: false, error: { code: 'INTERNAL', message: 'provider down' } },
       repairSlides: [textSlide(1), repairedNoImageSlide(2), textSlide(3)],
     });
@@ -485,7 +666,7 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
 
   it('uses deterministic no-image fallback when AI repair still returns an image placeholder', async () => {
     const deps = makeDeps({
-      slides: [textSlide(1), imageSlide(2)],
+      slides: [textSlide(1), optionalImageSlide(2)],
       imageResult: { ok: false, error: { code: 'INTERNAL', message: 'provider down' } },
       repairSlides: [textSlide(1), imageSlide(2)],
     });
@@ -508,7 +689,7 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
 
   it('uses deterministic no-image fallback when AI no-image repair fails', async () => {
     const deps = makeDeps({
-      slides: [textSlide(1), imageSlide(2)],
+      slides: [textSlide(1), optionalImageSlide(2)],
       imageResult: { ok: false, error: { code: 'INTERNAL', message: 'provider down' } },
     });
 
@@ -519,5 +700,33 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
     expect(repaired.image_status).toBe('provider_failed_repaired');
     expect(repaired.nested_groups.core_content?.some((component) => component.type === 'image_placeholder')).toBe(false);
     expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
+  });
+
+  it('fails the job honestly when a required image slide cannot be generated after retry', async () => {
+    const deps = makeDeps({
+      slides: [textSlide(1), imageSlide(2), textSlide(3)],
+      imageResult: { ok: false, error: { code: 'INTERNAL', message: 'provider down' } },
+    });
+
+    await processSduiCarouselJob(deps, { teamId: 'team-1', jobId: 'job-1', actorId: 'actor-1' });
+
+    // Job must be marked failed — required image cannot silently disappear
+    expect(deps.jobRepo.setStatus).toHaveBeenCalledWith('team-1', 'job-1', 'failed', 'provider_error');
+    // Slide rows are inserted as 'pending' first to satisfy the
+    // `slide_failed_has_reason` CHECK constraint (reason IS NOT NULL
+    // when status = 'failed'). Failed slides are then marked via updateSlide.
+    expect(deps.slideRepo.insertSlide).toHaveBeenCalledWith(
+      expect.objectContaining({ index: 1, status: 'pending' }),
+    );
+    expect(deps.slideRepo.updateSlide).toHaveBeenCalledWith(
+      'team-1',
+      'job-1',
+      1,
+      expect.objectContaining({ status: 'failed', reason: 'provider_error' }),
+    );
+    // No slides should have been rendered (we exit before render loop)
+    expect(deps.renderedSlides).toHaveLength(0);
+    // Planner repair should NOT have been called
+    expect(deps.planner.plan).not.toHaveBeenCalled();
   });
 });

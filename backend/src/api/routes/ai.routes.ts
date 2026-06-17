@@ -43,6 +43,34 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Invalid AI settings';
 }
 
+function isImaginerBaseUrl(rawBaseUrl: string): boolean {
+  try {
+    return new URL(rawBaseUrl).hostname === 'imaginer.mirava.studio';
+  } catch {
+    return false;
+  }
+}
+
+function mapImaginerModels(data: unknown): Array<{ id: string; name: string }> {
+  const models = (data as { models?: unknown }).models;
+  if (!Array.isArray(models)) return [];
+
+  return models
+    .map((model) => {
+      const m = model as { id?: unknown; display_name?: unknown; enabled?: unknown };
+      if (typeof m.id !== 'string' || !m.id.trim()) return null;
+      if (m.enabled === false) return null;
+
+      return {
+        id: m.id,
+        name: typeof m.display_name === 'string' && m.display_name.trim()
+          ? m.display_name
+          : m.id,
+      };
+    })
+    .filter((model): model is { id: string; name: string } => model !== null);
+}
+
 export const aiRoutes = (deps: AiRoutesDeps): FastifyPluginAsync => (fastify) => {
   fastify.get('/usage', {
     preHandler: [fastify.requireAuth, fastify.requireTeamId]
@@ -217,6 +245,18 @@ export const aiRoutes = (deps: AiRoutesDeps): FastifyPluginAsync => (fastify) =>
           
           if (mapped.length > 0) return mapped;
         }
+      } else if (purpose === 'image' && isImaginerBaseUrl(rawBaseUrl)) {
+        const url = `${rawBaseUrl}/api/public/v1/models`;
+        const res = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`
+          }
+        });
+        if (!res.ok) throw new Error(`Imaginer API failed: ${res.status}`);
+        const data: any = await res.json();
+        const mapped = mapImaginerModels(data);
+
+        if (mapped.length > 0) return mapped;
       } else {
         const url = `${rawBaseUrl}/v1/models`;
         const res = await fetch(url, {
