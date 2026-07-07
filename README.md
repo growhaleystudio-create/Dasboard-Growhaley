@@ -83,3 +83,5 @@ npm test
 - **Skoring deterministik** — skor adalah fungsi murni dari atribut Lead + Scoring_Model; AI bersifat opsional dan melengkapi, bukan menggantikan.
 - **Privacy by design** — hanya data publik yang disimpan; retensi & penghapusan subjek data otomatis dan teraudit.
 - **Versi dependensi dipinning eksak** untuk reproducibility.
+- **Database Status**: Konfigurasi PostgreSQL (Supabase) dan Redis (Upstash) untuk produksi telah dikonfigurasi di `.env` lokal dan diverifikasi online.
+
