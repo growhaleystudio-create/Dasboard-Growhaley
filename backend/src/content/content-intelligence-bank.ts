@@ -48,39 +48,35 @@ const NARRATIVE_ARCS: NarrativeArcPreset[] = [
       {
         role: 'hook',
         narrativeGoal: 'Name the painful problem in one sharp statement.',
-        layoutCandidates: ['cover_editorial_left', 'cover_centered', 'cover_with_cta'],
+        layoutCandidates: ['gw_poster_cover'],
         componentMix: ['tag', 'header', 'body'],
         imageUse: 'none',
       },
       {
         role: 'visible_cost',
         narrativeGoal: 'Show what the problem quietly costs the audience.',
-        layoutCandidates: ['split_image_left_text_right', 'split_stat_image', 'stat_highlight'],
+        layoutCandidates: ['gw_photo_statement', 'gw_poster_stat'],
         componentMix: ['header', 'body', 'image_placeholder or stat'],
         imageUse: 'optional',
       },
       {
         role: 'why_it_happens',
         narrativeGoal: 'Explain the mechanism behind the problem.',
-        layoutCandidates: [
-          'feature_cards_with_header',
-          'checklist_with_body',
-          'comparison_with_header',
-        ],
+        layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
         componentMix: ['header', 'feature_cards or checklist or comparison'],
         imageUse: 'none',
       },
       {
         role: 'better_way',
         narrativeGoal: 'Present the recommended behavior, system, or product angle.',
-        layoutCandidates: ['numbered_steps', 'numbered_with_image', 'split_header_body_cta'],
+        layoutCandidates: ['gw_poster_list', 'gw_poster_cta'],
         componentMix: ['header', 'checklist', 'button_cta optional'],
         imageUse: 'optional',
       },
       {
         role: 'cta',
         narrativeGoal: 'Close with a concrete next action.',
-        layoutCandidates: ['header_body_cta', 'cta_centered', 'quote_stat_combo'],
+        layoutCandidates: ['gw_poster_cta', 'gw_poster_stat'],
         componentMix: ['header', 'body or quote', 'button_cta'],
         imageUse: 'none',
       },
@@ -104,32 +100,28 @@ const NARRATIVE_ARCS: NarrativeArcPreset[] = [
       {
         role: 'empathetic_hook',
         narrativeGoal: 'Open with a non-judgmental warning that feels human, not sensational.',
-        layoutCandidates: ['cover_editorial_left', 'cover_checklist', 'cover_centered'],
+        layoutCandidates: ['gw_poster_cover'],
         componentMix: ['tag', 'header', 'body or checklist'],
         imageUse: 'none',
       },
       {
         role: 'symbolic_impact',
         narrativeGoal: 'Use one symbolic visual metaphor to make the hidden impact concrete.',
-        layoutCandidates: [
-          'split_image_left_text_right',
-          'image_top_text_bottom',
-          'quote_with_image',
-        ],
+        layoutCandidates: ['gw_photo_statement', 'gw_poster_quote'],
         componentMix: ['image_placeholder', 'header', 'body or quote'],
         imageUse: 'required',
       },
       {
         role: 'symptoms_or_signals',
         narrativeGoal: 'List early warning signs the audience can recognize.',
-        layoutCandidates: ['feature_cards_with_header', 'checklist_with_body', 'two_column_text'],
+        layoutCandidates: ['gw_poster_cards', 'gw_poster_list', 'gw_poster_statement'],
         componentMix: ['header', 'feature_cards or checklist'],
         imageUse: 'none',
       },
       {
         role: 'prevention_protocol',
         narrativeGoal: 'Turn advice into a step-by-step prevention plan.',
-        layoutCandidates: ['numbered_steps', 'image_top_checklist_bottom', 'numbered_with_image'],
+        layoutCandidates: ['gw_poster_list'],
         componentMix: ['header', 'checklist', 'image_placeholder optional'],
         imageUse: 'optional',
       },
@@ -137,7 +129,7 @@ const NARRATIVE_ARCS: NarrativeArcPreset[] = [
         role: 'supportive_close',
         narrativeGoal:
           'Close with a calm invitation to talk, seek help, or take one safe next step.',
-        layoutCandidates: ['header_body_cta', 'quote_focus', 'cta_centered'],
+        layoutCandidates: ['gw_poster_cta', 'gw_poster_quote'],
         componentMix: ['quote or header', 'body optional', 'button_cta optional'],
         imageUse: 'none',
       },
@@ -162,35 +154,35 @@ const NARRATIVE_ARCS: NarrativeArcPreset[] = [
       {
         role: 'before_state',
         narrativeGoal: 'Show the old frustrating state.',
-        layoutCandidates: ['cover_editorial_left', 'comparison_with_header'],
+        layoutCandidates: ['gw_poster_cover', 'gw_poster_cards'],
         componentMix: ['header', 'body or comparison'],
         imageUse: 'none',
       },
       {
         role: 'after_state',
         narrativeGoal: 'Show what changes when the audience adopts the better way.',
-        layoutCandidates: ['comparison_columns', 'feature_cards_with_header'],
+        layoutCandidates: ['gw_poster_cards'],
         componentMix: ['comparison or feature_cards'],
         imageUse: 'none',
       },
       {
         role: 'bridge_steps',
         narrativeGoal: 'Explain the transition in clear steps.',
-        layoutCandidates: ['numbered_steps', 'numbered_with_image'],
+        layoutCandidates: ['gw_poster_list'],
         componentMix: ['header', 'checklist', 'image_placeholder optional'],
         imageUse: 'optional',
       },
       {
         role: 'proof',
         narrativeGoal: 'Add proof, metric, or concrete example.',
-        layoutCandidates: ['stat_highlight', 'split_stat_image', 'quote_stat_combo'],
+        layoutCandidates: ['gw_poster_stat'],
         componentMix: ['header', 'body or quote', 'image_placeholder optional'],
         imageUse: 'optional',
       },
       {
         role: 'action',
         narrativeGoal: 'Ask the audience to try the new behavior.',
-        layoutCandidates: ['header_body_cta', 'cta_centered'],
+        layoutCandidates: ['gw_poster_cta'],
         componentMix: ['header', 'body', 'button_cta'],
         imageUse: 'none',
       },
@@ -205,35 +197,35 @@ const NARRATIVE_ARCS: NarrativeArcPreset[] = [
       {
         role: 'myth_hook',
         narrativeGoal: 'State the misconception in a provocative but clear way.',
-        layoutCandidates: ['cover_editorial_left', 'big_statement'],
+        layoutCandidates: ['gw_poster_cover', 'gw_poster_statement'],
         componentMix: ['tag', 'header'],
         imageUse: 'none',
       },
       {
         role: 'truth',
         narrativeGoal: 'Explain the truth with a short rationale.',
-        layoutCandidates: ['text_stack', 'quote_stat_combo', 'stat_highlight'],
+        layoutCandidates: ['gw_poster_statement', 'gw_poster_stat'],
         componentMix: ['header', 'body or quote'],
         imageUse: 'none',
       },
       {
         role: 'evidence',
         narrativeGoal: 'Show signs, examples, or proof points.',
-        layoutCandidates: ['feature_cards_with_header', 'split_checklist_image'],
+        layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
         componentMix: ['feature_cards or checklist', 'image_placeholder optional'],
         imageUse: 'optional',
       },
       {
         role: 'new_frame',
         narrativeGoal: 'Give the audience a better mental model.',
-        layoutCandidates: ['comparison_with_header', 'two_column_text'],
+        layoutCandidates: ['gw_poster_cards', 'gw_poster_statement'],
         componentMix: ['comparison or checklist'],
         imageUse: 'none',
       },
       {
         role: 'practice',
         narrativeGoal: 'Turn the reframe into one practical action.',
-        layoutCandidates: ['numbered_steps', 'header_body_cta'],
+        layoutCandidates: ['gw_poster_list', 'gw_poster_cta'],
         componentMix: ['header', 'checklist or button_cta'],
         imageUse: 'none',
       },
@@ -257,39 +249,35 @@ const NARRATIVE_ARCS: NarrativeArcPreset[] = [
       {
         role: 'category_hook',
         narrativeGoal: 'Name the category pain or opportunity.',
-        layoutCandidates: ['cover_editorial_left', 'cover_with_cta'],
+        layoutCandidates: ['gw_poster_cover'],
         componentMix: ['tag', 'header', 'body optional'],
         imageUse: 'none',
       },
       {
         role: 'use_case_visual',
         narrativeGoal: 'Show the product or use case visually.',
-        layoutCandidates: [
-          'split_image_left_text_right',
-          'image_full_caption',
-          'split_header_body_cta',
-        ],
+        layoutCandidates: ['gw_photo_statement', 'gw_poster_cta'],
         componentMix: ['image_placeholder', 'header', 'body or button_cta'],
         imageUse: 'required',
       },
       {
         role: 'value_cards',
         narrativeGoal: 'Break the value into concrete benefit cards.',
-        layoutCandidates: ['feature_cards_with_header', 'feature_cards_grid'],
+        layoutCandidates: ['gw_poster_cards'],
         componentMix: ['header optional', 'feature_cards'],
         imageUse: 'none',
       },
       {
         role: 'workflow',
         narrativeGoal: 'Show how the audience would use it.',
-        layoutCandidates: ['numbered_steps', 'numbered_with_image'],
+        layoutCandidates: ['gw_poster_list'],
         componentMix: ['header', 'checklist', 'image_placeholder optional'],
         imageUse: 'optional',
       },
       {
         role: 'conversion_close',
         narrativeGoal: 'Close with the product promise and next action.',
-        layoutCandidates: ['header_body_cta', 'split_header_body_cta', 'cta_centered'],
+        layoutCandidates: ['gw_poster_cta'],
         componentMix: ['header', 'body', 'button_cta', 'image_placeholder optional'],
         imageUse: 'optional',
       },
@@ -797,11 +785,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Symbolic Visual Split',
     triggers: ['impact', 'dampak', 'bahaya', 'visual', 'ilustrasi', 'metaphor'],
     useWhen: 'A slide needs one strong metaphorical image plus concise explanatory copy.',
-    layoutCandidates: [
-      'split_image_left_text_right',
-      'split_text_left_image_right',
-      'quote_with_image',
-    ],
+    layoutCandidates: ['gw_photo_statement', 'gw_poster_quote'],
     componentMix: ['image_placeholder', 'header', 'body or quote'],
     narrativeRole: 'Make an abstract idea emotionally concrete.',
   },
@@ -810,7 +794,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Symptom or Signal Cards',
     triggers: ['tanda', 'gejala', 'signals', 'ciri', 'symptoms', 'alasan'],
     useWhen: 'The content lists several signs, reasons, symptoms, or small concepts.',
-    layoutCandidates: ['feature_cards_with_header', 'feature_cards_grid'],
+    layoutCandidates: ['gw_poster_cards'],
     componentMix: ['header optional', 'feature_cards with 3-6 items'],
     narrativeRole: 'Make multiple points scannable and less monotonous than a checklist.',
   },
@@ -819,7 +803,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Two-State Comparison',
     triggers: ['dulu', 'sekarang', 'tanpa', 'dengan', 'before', 'after', 'manual', 'otomatis'],
     useWhen: 'The story contrasts two states, options, behaviors, or outcomes.',
-    layoutCandidates: ['comparison_with_header', 'comparison_columns'],
+    layoutCandidates: ['gw_poster_cards'],
     componentMix: ['comparison with 2 columns'],
     narrativeRole: 'Create tension and clarity through contrast.',
   },
@@ -828,7 +812,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Prevention Steps',
     triggers: ['pencegahan', 'langkah', 'cara', 'step', 'playbook', 'protocol'],
     useWhen: 'The user asks what to do, how to prevent, or what sequence to follow.',
-    layoutCandidates: ['numbered_steps', 'checklist_with_body', 'numbered_with_image'],
+    layoutCandidates: ['gw_poster_list'],
     componentMix: ['header', 'body optional', 'checklist with ordered steps'],
     narrativeRole: 'Turn advice into practical action.',
   },
@@ -837,12 +821,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Proof or Stat Moment',
     triggers: ['data', 'angka', 'statistik', 'proof', 'bukti', 'hasil'],
     useWhen: 'A claim needs a memorable proof point or metric.',
-    layoutCandidates: [
-      'stat_highlight',
-      'big_stat_with_body',
-      'quote_stat_combo',
-      'split_stat_image',
-    ],
+    layoutCandidates: ['gw_poster_stat'],
     componentMix: ['header', 'body or quote', 'image_placeholder optional'],
     narrativeRole: 'Break the rhythm with a punchy proof slide.',
   },
@@ -851,7 +830,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Supportive Close',
     triggers: ['cta', 'ajak', 'hubungi', 'mulai', 'diskusi', 'bantuan'],
     useWhen: 'The final slide should invite action without feeling pushy.',
-    layoutCandidates: ['header_body_cta', 'cta_centered', 'quote_focus'],
+    layoutCandidates: ['gw_poster_cta', 'gw_poster_quote'],
     componentMix: ['header or quote', 'body optional', 'button_cta optional'],
     narrativeRole: 'Convert attention into a safe next step.',
   },
@@ -860,7 +839,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Question Hook',
     triggers: ['kenapa', 'mengapa', 'pernah', 'apakah', 'why', 'question', 'tanya'],
     useWhen: 'The opening should pull the audience in with a direct question.',
-    layoutCandidates: ['cover_editorial_left', 'cover_centered', 'big_statement'],
+    layoutCandidates: ['gw_poster_cover', 'gw_poster_statement'],
     componentMix: ['tag', 'header', 'body optional'],
     narrativeRole: 'Create curiosity before explaining the answer.',
   },
@@ -869,7 +848,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Bold Claim Hook',
     triggers: ['rahasia', 'truth', 'fakta', 'jangan', 'stop', 'ternyata', 'bukan'],
     useWhen: 'The content needs a strong contrarian or provocative opening.',
-    layoutCandidates: ['big_statement', 'cover_editorial_left', 'cover_with_cta'],
+    layoutCandidates: ['gw_poster_statement', 'gw_poster_cover'],
     componentMix: ['tag', 'header'],
     narrativeRole: 'Stop the scroll with one memorable claim.',
   },
@@ -878,7 +857,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Checklist Cover',
     triggers: ['panduan', 'guide', 'checklist', 'tips', 'cara', 'langkah'],
     useWhen: 'The cover should preview multiple useful takeaways.',
-    layoutCandidates: ['cover_checklist', 'cover_centered'],
+    layoutCandidates: ['gw_poster_cover'],
     componentMix: ['header', 'checklist'],
     narrativeRole: 'Promise practical value immediately.',
   },
@@ -887,7 +866,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Definition Explainer',
     triggers: ['apa itu', 'definisi', 'meaning', 'pengertian', 'explain', 'jelaskan'],
     useWhen: 'The slide introduces a concept before going deeper.',
-    layoutCandidates: ['text_centered', 'text_stack', 'quote_stat_combo'],
+    layoutCandidates: ['gw_poster_statement', 'gw_poster_stat'],
     componentMix: ['header', 'body or quote'],
     narrativeRole: 'Clarify the concept in plain language.',
   },
@@ -896,11 +875,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Cause and Effect',
     triggers: ['penyebab', 'akibat', 'dampak', 'karena', 'sebab', 'effect', 'impact'],
     useWhen: 'The content needs to connect a behavior to its consequence.',
-    layoutCandidates: [
-      'split_text_left_image_right',
-      'comparison_with_header',
-      'checklist_with_body',
-    ],
+    layoutCandidates: ['gw_photo_statement', 'gw_poster_cards', 'gw_poster_list'],
     componentMix: ['header', 'body or checklist', 'image_placeholder optional'],
     narrativeRole: 'Make causality easy to understand.',
   },
@@ -909,7 +884,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Common Mistakes',
     triggers: ['kesalahan', 'mistake', 'salah', 'hindari', 'jangan lakukan', 'error umum'],
     useWhen: 'The audience needs to recognize avoidable mistakes.',
-    layoutCandidates: ['feature_cards_with_header', 'checklist_stack', 'two_column_text'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list', 'gw_poster_statement'],
     componentMix: ['header', 'feature_cards or checklist'],
     narrativeRole: 'Turn pitfalls into scannable warnings.',
   },
@@ -918,7 +893,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Practical Tips',
     triggers: ['tips', 'trik', 'cara cepat', 'praktis', 'hack', 'rekomendasi'],
     useWhen: 'The slide gives several practical tips that stand alone.',
-    layoutCandidates: ['feature_cards_with_header', 'checklist_with_body', 'feature_cards_grid'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
     componentMix: ['header optional', 'feature_cards or checklist'],
     narrativeRole: 'Deliver fast utility without heavy explanation.',
   },
@@ -927,7 +902,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Dos and Donts',
     triggers: ['do and dont', 'dos donts', 'boleh', 'jangan', 'lakukan', 'hindari'],
     useWhen: 'The content compares good and bad behaviors.',
-    layoutCandidates: ['comparison_with_header', 'comparison_columns', 'two_column_text'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_statement'],
     componentMix: ['comparison or checklist'],
     narrativeRole: 'Create clear behavioral contrast.',
   },
@@ -936,7 +911,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Myth vs Fact',
     triggers: ['mitos', 'fakta', 'myth', 'fact', 'salah kaprah'],
     useWhen: 'The audience likely believes something inaccurate.',
-    layoutCandidates: ['comparison_with_header', 'quote_stat_combo', 'big_statement'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_stat', 'gw_poster_statement'],
     componentMix: ['comparison or quote', 'header optional'],
     narrativeRole: 'Correct misconception with a memorable reframe.',
   },
@@ -945,7 +920,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Framework Cards',
     triggers: ['framework', 'metode', 'model', 'prinsip', 'pilar', 'pillar'],
     useWhen: 'The content explains a named framework or set of principles.',
-    layoutCandidates: ['feature_cards_with_header', 'feature_cards_grid', 'checklist_with_body'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
     componentMix: ['header', 'feature_cards with 3-6 items'],
     narrativeRole: 'Package ideas into reusable mental buckets.',
   },
@@ -954,11 +929,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Use Case Gallery',
     triggers: ['use case', 'contoh penggunaan', 'kasus', 'skenario', 'aplikasi'],
     useWhen: 'The content needs multiple examples for different situations.',
-    layoutCandidates: [
-      'feature_cards_with_header',
-      'image_top_checklist_bottom',
-      'split_checklist_image',
-    ],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
     componentMix: ['feature_cards or checklist', 'image_placeholder optional'],
     narrativeRole: 'Show breadth through concrete use cases.',
   },
@@ -967,7 +938,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Workflow Steps',
     triggers: ['workflow', 'alur', 'proses', 'pipeline', 'sistem kerja', 'step by step'],
     useWhen: 'The content describes a sequence or operational flow.',
-    layoutCandidates: ['numbered_steps', 'numbered_with_image', 'image_top_checklist_bottom'],
+    layoutCandidates: ['gw_poster_list'],
     componentMix: ['header', 'checklist ordered as steps', 'image_placeholder optional'],
     narrativeRole: 'Make a process feel executable.',
   },
@@ -976,7 +947,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Decision Checklist',
     triggers: ['pilih', 'memilih', 'decision', 'pertimbangan', 'kriteria', 'cocok'],
     useWhen: 'The audience needs criteria to decide what to do or choose.',
-    layoutCandidates: ['checklist_with_body', 'two_column_text', 'comparison_with_header'],
+    layoutCandidates: ['gw_poster_list', 'gw_poster_statement', 'gw_poster_cards'],
     componentMix: ['header', 'body optional', 'checklist or comparison'],
     narrativeRole: 'Help the audience make a confident decision.',
   },
@@ -985,7 +956,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Audit Scorecard',
     triggers: ['audit', 'cek', 'score', 'nilai', 'evaluasi', 'assessment'],
     useWhen: 'The content asks the audience to evaluate themselves or a process.',
-    layoutCandidates: ['feature_cards_with_header', 'checklist_stack', 'big_stat_with_body'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list', 'gw_poster_stat'],
     componentMix: ['header', 'feature_cards or checklist'],
     narrativeRole: 'Turn advice into a self-diagnostic moment.',
   },
@@ -994,7 +965,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Benefit Cards',
     triggers: ['benefit', 'manfaat', 'keuntungan', 'value', 'nilai', 'hasil'],
     useWhen: 'The content lists benefits or reasons to care.',
-    layoutCandidates: ['feature_cards_with_header', 'feature_cards_grid', 'checklist_with_body'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
     componentMix: ['header optional', 'feature_cards or checklist'],
     narrativeRole: 'Make benefits feel tangible and easy to scan.',
   },
@@ -1003,11 +974,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Feature Breakdown',
     triggers: ['fitur', 'feature', 'fungsi', 'capability', 'tools'],
     useWhen: 'The slide explains product or service capabilities.',
-    layoutCandidates: [
-      'feature_cards_with_header',
-      'split_header_body_cta',
-      'split_checklist_image',
-    ],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_cta', 'gw_poster_list'],
     componentMix: ['header', 'feature_cards or checklist', 'image_placeholder optional'],
     narrativeRole: 'Translate features into understandable value.',
   },
@@ -1016,7 +983,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Objection Handling',
     triggers: ['mahal', 'ribet', 'takut', 'keberatan', 'objection', 'ragu', 'khawatir'],
     useWhen: 'The content needs to answer doubts or resistance.',
-    layoutCandidates: ['comparison_with_header', 'quote_focus', 'checklist_with_body'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_quote', 'gw_poster_list'],
     componentMix: ['comparison or quote or checklist'],
     narrativeRole: 'Reduce friction by answering the audience’s hidden objections.',
   },
@@ -1025,7 +992,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Social Proof',
     triggers: ['testimoni', 'testimonial', 'review', 'bukti sosial', 'dipercaya', 'customer'],
     useWhen: 'The content needs trust through a quote or customer evidence.',
-    layoutCandidates: ['quote_focus', 'quote_with_image', 'quote_stat_combo'],
+    layoutCandidates: ['gw_poster_quote', 'gw_poster_stat'],
     componentMix: ['quote', 'image_placeholder optional', 'body optional'],
     narrativeRole: 'Use voice-of-customer or proof to increase trust.',
   },
@@ -1034,7 +1001,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Case Study Snapshot',
     triggers: ['case study', 'studi kasus', 'hasil klien', 'before after', 'success story'],
     useWhen: 'The story needs a compact example of transformation.',
-    layoutCandidates: ['split_stat_image', 'big_stat_with_body', 'comparison_with_header'],
+    layoutCandidates: ['gw_poster_stat', 'gw_poster_cards'],
     componentMix: ['header', 'body or comparison', 'image_placeholder optional'],
     narrativeRole: 'Compress a success story into one slide.',
   },
@@ -1043,7 +1010,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Metric Punch',
     triggers: ['%', 'persen', 'x lipat', 'angka', 'metric', 'stat', 'data'],
     useWhen: 'A single number should become the visual anchor.',
-    layoutCandidates: ['stat_highlight', 'big_stat_with_body', 'split_stat_image'],
+    layoutCandidates: ['gw_poster_stat'],
     componentMix: ['header', 'body', 'image_placeholder optional'],
     narrativeRole: 'Give the deck a memorable quantitative beat.',
   },
@@ -1052,7 +1019,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Quote Reframe',
     triggers: ['quote', 'kutipan', 'kalimat', 'prinsip', 'mindset'],
     useWhen: 'A sentence or principle should carry the emotional shift.',
-    layoutCandidates: ['quote_focus', 'quote_stat_combo', 'quote_with_image'],
+    layoutCandidates: ['gw_poster_quote', 'gw_poster_stat'],
     componentMix: ['quote', 'image_placeholder optional'],
     narrativeRole: 'Make the audience pause and rethink.',
   },
@@ -1061,7 +1028,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Visual Caption',
     triggers: ['caption', 'gambar utama', 'visual utama', 'hero image', 'full image'],
     useWhen: 'The visual should dominate and copy should be minimal.',
-    layoutCandidates: ['image_full_caption', 'cover_image_full', 'image_top_text_bottom'],
+    layoutCandidates: ['gw_photo_statement'],
     componentMix: ['image_placeholder', 'body or header'],
     narrativeRole: 'Let one image carry the idea.',
   },
@@ -1070,11 +1037,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Visual-led Checklist',
     triggers: ['visual checklist', 'gambar dan poin', 'ilustrasi dan tips', 'image checklist'],
     useWhen: 'An image introduces several supporting points.',
-    layoutCandidates: [
-      'image_top_checklist_bottom',
-      'split_image_checklist',
-      'split_checklist_image',
-    ],
+    layoutCandidates: ['gw_poster_list'],
     componentMix: ['image_placeholder', 'checklist', 'header optional'],
     narrativeRole: 'Pair visual attention with practical takeaways.',
   },
@@ -1083,7 +1046,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Product Visual CTA',
     triggers: ['demo', 'trial', 'coba', 'signup', 'book demo', 'produk'],
     useWhen: 'The CTA should be supported by a product or proof visual.',
-    layoutCandidates: ['split_header_body_cta', 'header_body_cta', 'cta_centered'],
+    layoutCandidates: ['gw_poster_cta'],
     componentMix: ['header', 'body', 'button_cta', 'image_placeholder optional'],
     narrativeRole: 'Bridge education into action.',
   },
@@ -1092,7 +1055,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Negative Positive Split',
     triggers: ['negatif', 'positif', 'buruk', 'baik', 'wrong right', 'salah benar'],
     useWhen: 'The content contrasts harmful and healthy patterns.',
-    layoutCandidates: ['comparison_with_header', 'comparison_columns', 'two_column_text'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_statement'],
     componentMix: ['comparison with positive and negative columns'],
     narrativeRole: 'Make the right behavior obvious.',
   },
@@ -1101,7 +1064,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Timeline-like Steps',
     triggers: ['timeline', 'fase', 'phase', 'tahap', 'minggu', 'hari ke'],
     useWhen: 'The content has phases over time; rendered as numbered steps in current system.',
-    layoutCandidates: ['numbered_steps', 'numbered_with_image', 'checklist_with_body'],
+    layoutCandidates: ['gw_poster_list'],
     componentMix: ['header', 'checklist as chronological phases'],
     narrativeRole: 'Represent progress across time without a custom timeline renderer.',
   },
@@ -1110,7 +1073,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Problem Stack',
     triggers: ['masalah utama', 'akar masalah', 'problem stack', 'kenapa gagal'],
     useWhen: 'Several causes compound into one bigger problem.',
-    layoutCandidates: ['feature_cards_with_header', 'checklist_with_body', 'split_checklist_image'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
     componentMix: ['header', 'feature_cards or checklist', 'image_placeholder optional'],
     narrativeRole: 'Show how problems pile up.',
   },
@@ -1119,7 +1082,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Solution Stack',
     triggers: ['solusi', 'stack', 'toolkit', 'rekomendasi', 'kombinasi'],
     useWhen: 'The slide presents multiple solution ingredients.',
-    layoutCandidates: ['feature_cards_with_header', 'checklist_with_body', 'numbered_steps'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
     componentMix: ['header', 'feature_cards or checklist'],
     narrativeRole: 'Make the recommended solution feel complete.',
   },
@@ -1128,7 +1091,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Empathy Moment',
     triggers: ['takut', 'cemas', 'capek', 'frustrasi', 'khawatir', 'emosional', 'keluarga'],
     useWhen: 'The topic needs emotional validation before advice.',
-    layoutCandidates: ['quote_focus', 'text_centered', 'quote_with_image'],
+    layoutCandidates: ['gw_poster_quote', 'gw_poster_statement'],
     componentMix: ['quote or header', 'body optional', 'image_placeholder optional'],
     narrativeRole: 'Make the audience feel understood.',
   },
@@ -1137,7 +1100,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Authority Explainer',
     triggers: ['expert', 'ahli', 'riset', 'penelitian', 'menurut', 'study'],
     useWhen: 'The slide should sound evidence-informed without being too dense.',
-    layoutCandidates: ['quote_stat_combo', 'stat_highlight', 'text_stack'],
+    layoutCandidates: ['gw_poster_stat', 'gw_poster_statement'],
     componentMix: ['quote or header', 'body'],
     narrativeRole: 'Add credibility and calm authority.',
   },
@@ -1146,7 +1109,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Micro Story',
     triggers: ['cerita', 'story', 'kisah', 'skenario', 'bayangkan'],
     useWhen: 'The content benefits from a short relatable scenario.',
-    layoutCandidates: ['text_stack', 'split_image_left_text_right', 'quote_with_image'],
+    layoutCandidates: ['gw_poster_statement', 'gw_photo_statement', 'gw_poster_quote'],
     componentMix: ['header', 'body or quote', 'image_placeholder optional'],
     narrativeRole: 'Humanize the message through a tiny scene.',
   },
@@ -1155,7 +1118,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Scenario Cards',
     triggers: ['skenario', 'situasi', 'contoh kasus', 'when to use', 'kapan'],
     useWhen: 'Multiple scenarios or contexts need equal weight.',
-    layoutCandidates: ['feature_cards_with_header', 'feature_cards_grid'],
+    layoutCandidates: ['gw_poster_cards'],
     componentMix: ['feature_cards with scenario labels'],
     narrativeRole: 'Show applicability across situations.',
   },
@@ -1164,7 +1127,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Simple Risk Matrix',
     triggers: ['risiko', 'prioritas', 'urgent', 'penting', 'matrix', 'matriks'],
     useWhen: 'The slide needs prioritization but no custom matrix renderer exists.',
-    layoutCandidates: ['comparison_with_header', 'feature_cards_with_header', 'two_column_text'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_statement'],
     componentMix: ['comparison or feature_cards grouped by priority'],
     narrativeRole: 'Help the audience triage what matters most.',
   },
@@ -1173,7 +1136,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Resource List',
     triggers: ['resource', 'referensi', 'tools', 'template', 'alat bantu', 'sumber'],
     useWhen: 'The content lists helpful tools, resources, or templates.',
-    layoutCandidates: ['feature_cards_with_header', 'checklist_stack', 'two_column_text'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list', 'gw_poster_statement'],
     componentMix: ['feature_cards or checklist'],
     narrativeRole: 'Give the audience practical resources to use.',
   },
@@ -1182,7 +1145,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'FAQ Objection',
     triggers: ['faq', 'pertanyaan', 'sering ditanya', 'q&a', 'jawaban'],
     useWhen: 'The slide answers common questions in compact form.',
-    layoutCandidates: ['feature_cards_with_header', 'checklist_with_body', 'two_column_text'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list', 'gw_poster_statement'],
     componentMix: ['feature_cards or checklist as Q/A pairs'],
     narrativeRole: 'Resolve confusion quickly.',
   },
@@ -1191,7 +1154,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Launch Announcement',
     triggers: ['launch', 'rilis', 'baru', 'announcement', 'pengumuman', 'introducing'],
     useWhen: 'The deck announces a new product, feature, or event.',
-    layoutCandidates: ['cover_with_cta', 'split_header_body_cta', 'feature_cards_with_header'],
+    layoutCandidates: ['gw_poster_cover', 'gw_poster_cta', 'gw_poster_cards'],
     componentMix: ['header', 'body', 'button_cta', 'feature_cards optional'],
     narrativeRole: 'Create momentum around something new.',
   },
@@ -1200,7 +1163,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Event Invitation',
     triggers: ['event', 'webinar', 'workshop', 'seminar', 'daftar', 'join'],
     useWhen: 'The content invites people to attend or register.',
-    layoutCandidates: ['cover_with_cta', 'header_body_cta', 'feature_cards_with_header'],
+    layoutCandidates: ['gw_poster_cover', 'gw_poster_cta', 'gw_poster_cards'],
     componentMix: ['header', 'body', 'button_cta', 'feature_cards optional'],
     narrativeRole: 'Turn event details into a clear invitation.',
   },
@@ -1209,11 +1172,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Step Visual Demo',
     triggers: ['tutorial', 'demo', 'how to', 'cara pakai', 'walkthrough'],
     useWhen: 'A visual walkthrough would help explain steps.',
-    layoutCandidates: [
-      'numbered_with_image',
-      'image_top_checklist_bottom',
-      'split_image_checklist',
-    ],
+    layoutCandidates: ['gw_poster_list'],
     componentMix: ['image_placeholder', 'checklist', 'header optional'],
     narrativeRole: 'Make instructions feel easy to follow.',
   },
@@ -1222,7 +1181,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Comparison Proof',
     triggers: ['bandingkan', 'compare', 'vs', 'versus', 'lebih baik', 'alternatif'],
     useWhen: 'The audience needs to compare options or approaches.',
-    layoutCandidates: ['comparison_with_header', 'comparison_columns', 'split_image_checklist'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
     componentMix: ['comparison', 'image_placeholder optional'],
     narrativeRole: 'Make tradeoffs easy to see.',
   },
@@ -1231,7 +1190,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Aspirational Future',
     triggers: ['masa depan', 'future', 'bayangkan', 'goal', 'impian', 'visi'],
     useWhen: 'The slide sells a better future state.',
-    layoutCandidates: ['cover_image_full', 'text_centered', 'split_image_left_text_right'],
+    layoutCandidates: ['gw_photo_statement', 'gw_poster_statement'],
     componentMix: ['header', 'body optional', 'image_placeholder optional'],
     narrativeRole: 'Help the audience picture the desired outcome.',
   },
@@ -1240,7 +1199,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Pain to Relief',
     triggers: ['capek', 'stress', 'frustrasi', 'relief', 'lega', 'terbebani'],
     useWhen: 'The deck moves from pain to emotional relief.',
-    layoutCandidates: ['comparison_with_header', 'quote_focus', 'split_image_left_text_right'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_quote', 'gw_photo_statement'],
     componentMix: ['comparison or quote', 'image_placeholder optional'],
     narrativeRole: 'Show the emotional payoff of change.',
   },
@@ -1249,7 +1208,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Premium Offer',
     triggers: ['premium', 'exclusive', 'high ticket', 'mewah', 'limited', 'eksklusif'],
     useWhen: 'The content positions a high-value offer.',
-    layoutCandidates: ['cover_editorial_left', 'image_full_caption', 'header_body_cta'],
+    layoutCandidates: ['gw_poster_cover', 'gw_photo_statement', 'gw_poster_cta'],
     componentMix: ['header', 'body or image_placeholder', 'button_cta optional'],
     narrativeRole: 'Create desirability through restraint and clarity.',
   },
@@ -1258,7 +1217,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Community Belonging',
     triggers: ['komunitas', 'community', 'bersama', 'member', 'kelompok', 'support group'],
     useWhen: 'The message is about belonging, support, or shared identity.',
-    layoutCandidates: ['quote_with_image', 'feature_cards_with_header', 'text_centered'],
+    layoutCandidates: ['gw_poster_quote', 'gw_poster_cards', 'gw_poster_statement'],
     componentMix: ['quote or header', 'feature_cards optional', 'image_placeholder optional'],
     narrativeRole: 'Make the audience feel part of something.',
   },
@@ -1267,7 +1226,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Safety Boundaries',
     triggers: ['batasan', 'boundaries', 'aman', 'safety', 'proteksi', 'perlindungan'],
     useWhen: 'The content teaches healthy boundaries or safe practices.',
-    layoutCandidates: ['checklist_with_body', 'numbered_steps', 'feature_cards_with_header'],
+    layoutCandidates: ['gw_poster_list', 'gw_poster_cards'],
     componentMix: ['header', 'body optional', 'checklist or feature_cards'],
     narrativeRole: 'Translate safety into clear rules.',
   },
@@ -1276,7 +1235,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Habit Builder',
     triggers: ['habit', 'kebiasaan', 'rutinitas', 'daily', 'konsisten', 'disiplin'],
     useWhen: 'The slide helps the audience build or replace a habit.',
-    layoutCandidates: ['numbered_steps', 'checklist_with_body', 'feature_cards_with_header'],
+    layoutCandidates: ['gw_poster_list', 'gw_poster_cards'],
     componentMix: ['header', 'checklist or feature_cards'],
     narrativeRole: 'Make behavioral change feel manageable.',
   },
@@ -1285,7 +1244,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Red Flags',
     triggers: ['red flag', 'red flags', 'tanda bahaya', 'warning sign', 'waspada'],
     useWhen: 'The content highlights warning signs.',
-    layoutCandidates: ['feature_cards_with_header', 'checklist_stack', 'split_checklist_image'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
     componentMix: ['header', 'feature_cards or checklist', 'image_placeholder optional'],
     narrativeRole: 'Make risks instantly recognizable.',
   },
@@ -1294,11 +1253,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Green Flags',
     triggers: ['green flag', 'tanda sehat', 'healthy sign', 'baik', 'positif'],
     useWhen: 'The content highlights positive signs or healthy behaviors.',
-    layoutCandidates: [
-      'feature_cards_with_header',
-      'checklist_with_body',
-      'comparison_with_header',
-    ],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
     componentMix: ['header', 'feature_cards or checklist'],
     narrativeRole: 'Show what good looks like.',
   },
@@ -1307,7 +1262,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Mini Playbook',
     triggers: ['playbook', 'protocol', 'sop', 'template langkah', 'action plan'],
     useWhen: 'The user wants a compact action plan.',
-    layoutCandidates: ['numbered_steps', 'checklist_with_body', 'header_body_cta'],
+    layoutCandidates: ['gw_poster_list', 'gw_poster_cta'],
     componentMix: ['header', 'checklist', 'button_cta optional'],
     narrativeRole: 'Give a concrete plan the audience can follow today.',
   },
@@ -1316,7 +1271,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Tool Stack',
     triggers: ['tool stack', 'tools', 'alat', 'software', 'aplikasi', 'stack'],
     useWhen: 'The content recommends several tools or systems.',
-    layoutCandidates: ['feature_cards_with_header', 'feature_cards_grid', 'split_header_body_cta'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_cta'],
     componentMix: ['feature_cards', 'image_placeholder optional'],
     narrativeRole: 'Organize tools by use case or workflow role.',
   },
@@ -1325,7 +1280,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Content Calendar',
     triggers: ['content calendar', 'kalender konten', 'jadwal', 'posting', 'mingguan'],
     useWhen: 'The topic is a schedule or recurring plan.',
-    layoutCandidates: ['numbered_steps', 'feature_cards_with_header', 'checklist_with_body'],
+    layoutCandidates: ['gw_poster_list', 'gw_poster_cards'],
     componentMix: ['header', 'checklist or feature_cards as time blocks'],
     narrativeRole: 'Make planning cadence visible.',
   },
@@ -1334,7 +1289,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Persona Segments',
     triggers: ['persona', 'audience', 'segmen', 'target market', 'customer type'],
     useWhen: 'The content explains different audience or customer types.',
-    layoutCandidates: ['feature_cards_with_header', 'comparison_with_header', 'feature_cards_grid'],
+    layoutCandidates: ['gw_poster_cards'],
     componentMix: ['feature_cards or comparison'],
     narrativeRole: 'Differentiate audience needs clearly.',
   },
@@ -1343,7 +1298,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Value Ladder',
     triggers: ['value ladder', 'tier', 'paket', 'level', 'upgrade', 'pricing'],
     useWhen: 'The content explains levels of offer, maturity, or progression.',
-    layoutCandidates: ['numbered_steps', 'comparison_with_header', 'feature_cards_with_header'],
+    layoutCandidates: ['gw_poster_list', 'gw_poster_cards'],
     componentMix: ['checklist or comparison or feature_cards'],
     narrativeRole: 'Show progression from basic to advanced.',
   },
@@ -1352,7 +1307,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Quick Wins',
     triggers: ['quick win', 'cepat', 'langsung', 'hari ini', 'mudah dilakukan'],
     useWhen: 'The content should feel immediately actionable.',
-    layoutCandidates: ['feature_cards_with_header', 'checklist_stack', 'numbered_steps'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list'],
     componentMix: ['feature_cards or checklist'],
     narrativeRole: 'Give immediate momentum.',
   },
@@ -1361,7 +1316,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Deep Dive',
     triggers: ['deep dive', 'mendalam', 'detail', 'analisis', 'komprehensif'],
     useWhen: 'The content needs depth but must remain carousel-friendly.',
-    layoutCandidates: ['text_stack', 'checklist_with_body', 'feature_cards_with_header'],
+    layoutCandidates: ['gw_poster_statement', 'gw_poster_list', 'gw_poster_cards'],
     componentMix: ['header', 'body', 'checklist or feature_cards'],
     narrativeRole: 'Compress deeper explanation without overwhelming the slide.',
   },
@@ -1370,7 +1325,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Recap Summary',
     triggers: ['recap', 'summary', 'ringkasan', 'kesimpulan', 'takeaway'],
     useWhen: 'The final or middle slide summarizes key takeaways.',
-    layoutCandidates: ['checklist_with_body', 'feature_cards_grid', 'big_statement'],
+    layoutCandidates: ['gw_poster_list', 'gw_poster_cards', 'gw_poster_statement'],
     componentMix: ['header optional', 'checklist or feature_cards'],
     narrativeRole: 'Lock the message into memory.',
   },
@@ -1379,7 +1334,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Bridge to Next Step',
     triggers: ['next step', 'langkah berikutnya', 'lanjut', 'mulai dari', 'action'],
     useWhen: 'The deck needs a transition from learning to doing.',
-    layoutCandidates: ['header_body_cta', 'numbered_steps', 'cta_centered'],
+    layoutCandidates: ['gw_poster_cta', 'gw_poster_list'],
     componentMix: ['header', 'body or checklist', 'button_cta optional'],
     narrativeRole: 'Turn insight into the next action.',
   },
@@ -1388,7 +1343,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Single Big Takeaway',
     triggers: ['intinya', 'takeaway', 'satu hal', 'poin utama', 'remember'],
     useWhen: 'One idea should dominate the slide.',
-    layoutCandidates: ['big_statement', 'text_centered', 'quote_focus'],
+    layoutCandidates: ['gw_poster_statement', 'gw_poster_quote'],
     componentMix: ['header or quote', 'body optional'],
     narrativeRole: 'Make one message impossible to miss.',
   },
@@ -1397,7 +1352,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Visual Metaphor Quote',
     triggers: ['metafora', 'quote visual', 'simbol', 'emosional', 'reflection'],
     useWhen: 'The deck needs an emotional visual pause.',
-    layoutCandidates: ['quote_with_image', 'quote_focus', 'image_full_caption'],
+    layoutCandidates: ['gw_poster_quote', 'gw_photo_statement'],
     componentMix: ['quote or body', 'image_placeholder optional'],
     narrativeRole: 'Blend emotion, metaphor, and memory.',
   },
@@ -1406,11 +1361,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Feature to Benefit',
     triggers: ['fitur menjadi manfaat', 'feature benefit', 'artinya untuk kamu', 'so what'],
     useWhen: 'The content must translate product details into audience value.',
-    layoutCandidates: [
-      'comparison_with_header',
-      'feature_cards_with_header',
-      'split_header_body_cta',
-    ],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_cta'],
     componentMix: ['comparison or feature_cards', 'image_placeholder optional'],
     narrativeRole: 'Connect what it does to why it matters.',
   },
@@ -1419,7 +1370,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Anti-pattern',
     triggers: ['anti pattern', 'jangan begini', 'cara salah', 'bad practice', 'keliru'],
     useWhen: 'The slide teaches by showing what not to do.',
-    layoutCandidates: ['comparison_with_header', 'checklist_stack', 'big_statement'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list', 'gw_poster_statement'],
     componentMix: ['comparison or checklist or header'],
     narrativeRole: 'Make bad practice recognizable and avoidable.',
   },
@@ -1428,7 +1379,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Maturity Model',
     triggers: ['maturity', 'level', 'tahapan', 'pemula', 'advanced', 'skala'],
     useWhen: 'The topic has levels of sophistication or maturity.',
-    layoutCandidates: ['numbered_steps', 'feature_cards_with_header', 'comparison_with_header'],
+    layoutCandidates: ['gw_poster_list', 'gw_poster_cards'],
     componentMix: ['checklist or feature_cards or comparison'],
     narrativeRole: 'Help the audience locate their current stage.',
   },
@@ -1437,7 +1388,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Market Insight',
     triggers: ['market', 'tren', 'trend', 'insight', 'industri', 'consumer behavior'],
     useWhen: 'The slide explains a market shift or audience behavior.',
-    layoutCandidates: ['stat_highlight', 'quote_stat_combo', 'text_stack'],
+    layoutCandidates: ['gw_poster_stat', 'gw_poster_statement'],
     componentMix: ['header', 'body or quote'],
     narrativeRole: 'Make external change feel relevant to the audience.',
   },
@@ -1446,7 +1397,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Brand Story',
     triggers: ['brand story', 'cerita brand', 'misi', 'visi', 'why we exist'],
     useWhen: 'The content tells why a brand or product exists.',
-    layoutCandidates: ['cover_editorial_left', 'text_stack', 'quote_with_image'],
+    layoutCandidates: ['gw_poster_cover', 'gw_poster_statement', 'gw_poster_quote'],
     componentMix: ['header', 'body or quote', 'image_placeholder optional'],
     narrativeRole: 'Build meaning beyond features.',
   },
@@ -1455,7 +1406,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Testimonial Breakdown',
     triggers: ['testimonial breakdown', 'review pelanggan', 'customer said', 'kata pelanggan'],
     useWhen: 'A customer quote needs to be unpacked into takeaways.',
-    layoutCandidates: ['quote_focus', 'quote_stat_combo', 'feature_cards_with_header'],
+    layoutCandidates: ['gw_poster_quote', 'gw_poster_stat', 'gw_poster_cards'],
     componentMix: ['quote', 'feature_cards optional'],
     narrativeRole: 'Turn social proof into lessons.',
   },
@@ -1464,7 +1415,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Offer Stack',
     triggers: ['offer', 'penawaran', 'bonus', 'paket', 'bundle', 'included'],
     useWhen: 'The slide lists what is included in an offer.',
-    layoutCandidates: ['feature_cards_with_header', 'checklist_with_body', 'header_body_cta'],
+    layoutCandidates: ['gw_poster_cards', 'gw_poster_list', 'gw_poster_cta'],
     componentMix: ['feature_cards or checklist', 'button_cta optional'],
     narrativeRole: 'Make an offer feel concrete and valuable.',
   },
@@ -1473,11 +1424,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Local Business Story',
     triggers: ['umkm', 'bisnis kecil', 'toko lokal', 'local business', 'owner bisnis'],
     useWhen: 'The content speaks to small/local business owners.',
-    layoutCandidates: [
-      'split_image_left_text_right',
-      'feature_cards_with_header',
-      'comparison_with_header',
-    ],
+    layoutCandidates: ['gw_photo_statement', 'gw_poster_cards'],
     componentMix: ['header', 'body or feature_cards or comparison', 'image_placeholder optional'],
     narrativeRole: 'Ground advice in everyday business reality.',
   },
@@ -1486,12 +1433,12 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Family Sensitive Guidance',
     triggers: ['keluarga', 'rumah tangga', 'pasangan', 'anak', 'parenting'],
     useWhen: 'The topic touches family relationships and needs a calm tone.',
-    layoutCandidates: ['quote_focus', 'checklist_with_body', 'split_image_left_text_right'],
+    layoutCandidates: ['gw_poster_quote', 'gw_poster_list', 'gw_photo_statement'],
     componentMix: ['quote or header', 'body or checklist', 'image_placeholder optional'],
     narrativeRole: 'Keep advice empathetic, practical, and non-sensational.',
   },
   {
-    id: 'dual_image_comparison',
+    id: 'gw_collage_showcase',
     name: 'Dual Image Comparison',
     triggers: [
       'before',
@@ -1507,16 +1454,12 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'perbandingan visual',
     ],
     useWhen: 'Two visual states need to be compared directly.',
-    layoutCandidates: [
-      'dual_image_comparison',
-      'problem_solution_visual_pair',
-      'dos_donts_visual_pair',
-    ],
+    layoutCandidates: ['gw_collage_showcase', 'gw_poster_cards'],
     componentMix: ['header', '2 image_placeholder', 'body optional'],
     narrativeRole: 'Make contrast immediately visible.',
   },
   {
-    id: 'product_angle_pair',
+    id: 'gw_collage_showcase',
     name: 'Product Angle Pair',
     triggers: [
       'angle produk',
@@ -1528,12 +1471,12 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'kemasan',
     ],
     useWhen: 'A product needs more than one angle or detail shot.',
-    layoutCandidates: ['product_angle_pair', 'collection_showcase', 'variant_selector_showcase'],
+    layoutCandidates: ['gw_collage_showcase'],
     componentMix: ['header', '2 image_placeholder', 'body optional'],
     narrativeRole: 'Show both the product and its detail/value cue.',
   },
   {
-    id: 'use_case_gallery_2up',
+    id: 'gw_collage_showcase',
     name: 'Use Case Gallery 2-Up',
     triggers: [
       'use case',
@@ -1544,21 +1487,21 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'audience segment',
     ],
     useWhen: 'Two usage scenarios or audience contexts should be shown together.',
-    layoutCandidates: ['use_case_gallery_2up', 'feature_visual_cards', 'mini_gallery_3up'],
+    layoutCandidates: ['gw_collage_showcase', 'gw_poster_cards'],
     componentMix: ['header', '2 image_placeholder', 'body optional'],
     narrativeRole: 'Translate abstract value into concrete scenes.',
   },
   {
-    id: 'mini_gallery_3up',
+    id: 'gw_collage_showcase',
     name: 'Mini Gallery 3-Up',
     triggers: ['tiga contoh', '3 contoh', 'contoh visual', 'variasi visual', 'gallery', 'galeri'],
     useWhen: 'Three examples, styles, or options should be previewed quickly.',
-    layoutCandidates: ['mini_gallery_3up', 'case_study_snapshot_grid', 'app_screen_flow'],
+    layoutCandidates: ['gw_collage_showcase'],
     componentMix: ['header', '3 image_placeholder', 'body optional'],
     narrativeRole: 'Create variety and proof through multiple examples.',
   },
   {
-    id: 'moodboard_grid',
+    id: 'gw_collage_showcase',
     name: 'Moodboard Grid',
     triggers: [
       'moodboard',
@@ -1570,12 +1513,12 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'aesthetic',
     ],
     useWhen: 'The slide needs to communicate an aesthetic direction.',
-    layoutCandidates: ['moodboard_grid', 'outfit_or_style_board', 'event_moment_grid'],
+    layoutCandidates: ['gw_collage_showcase'],
     componentMix: ['header', '4 image_placeholder', 'body optional'],
     narrativeRole: 'Show visual atmosphere instead of explaining it.',
   },
   {
-    id: 'step_visual_sequence',
+    id: 'gw_collage_showcase',
     name: 'Step Visual Sequence',
     triggers: [
       'step visual',
@@ -1587,12 +1530,12 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'onboarding',
     ],
     useWhen: 'A process is clearer when each step has a small visual.',
-    layoutCandidates: ['step_visual_sequence', 'app_screen_flow', 'numbered_with_image'],
+    layoutCandidates: ['gw_collage_showcase', 'gw_poster_list'],
     componentMix: ['header', 'checklist', '3 image_placeholder'],
     narrativeRole: 'Turn instructions into a visual sequence.',
   },
   {
-    id: 'problem_solution_visual_pair',
+    id: 'gw_collage_showcase',
     name: 'Problem Solution Visual Pair',
     triggers: [
       'problem solution',
@@ -1602,20 +1545,16 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'solusi visual',
     ],
     useWhen: 'A problem state and solution state should be seen side by side.',
-    layoutCandidates: [
-      'problem_solution_visual_pair',
-      'dual_image_comparison',
-      'comparison_with_header',
-    ],
+    layoutCandidates: ['gw_collage_showcase', 'gw_poster_cards'],
     componentMix: ['header', '2 image_placeholder', 'body optional'],
     narrativeRole: 'Make the improvement concrete.',
   },
   {
-    id: 'feature_visual_cards',
+    id: 'gw_poster_cards',
     name: 'Feature Visual Cards',
     triggers: ['fitur visual', 'feature visual', 'kartu fitur', 'visual cards', 'benefit visual'],
     useWhen: 'Multiple features each deserve a small visual tile.',
-    layoutCandidates: ['feature_visual_cards', 'feature_cards_with_header', 'collection_showcase'],
+    layoutCandidates: ['gw_poster_cards', 'gw_collage_showcase'],
     componentMix: ['header optional', 'feature_cards', '2-4 image_placeholder'],
     narrativeRole: 'Make feature lists feel tangible.',
   },
@@ -1631,16 +1570,12 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'social proof',
     ],
     useWhen: 'Social proof needs both human context and product/result imagery.',
-    layoutCandidates: [
-      'testimonial_with_portrait_and_product',
-      'social_proof_wall',
-      'quote_with_image',
-    ],
+    layoutCandidates: ['gw_collage_showcase', 'gw_poster_quote'],
     componentMix: ['quote', '2 image_placeholder', 'body optional'],
     narrativeRole: 'Make proof feel credible and human.',
   },
   {
-    id: 'case_study_snapshot_grid',
+    id: 'gw_collage_showcase',
     name: 'Case Study Snapshot Grid',
     triggers: [
       'case study',
@@ -1651,12 +1586,12 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'before process after',
     ],
     useWhen: 'A case study needs snapshots of before, process, and result.',
-    layoutCandidates: ['case_study_snapshot_grid', 'mini_gallery_3up', 'social_proof_wall'],
+    layoutCandidates: ['gw_collage_showcase'],
     componentMix: ['header', '3 image_placeholder', 'body optional'],
     narrativeRole: 'Compress proof into a visual story.',
   },
   {
-    id: 'dos_donts_visual_pair',
+    id: 'gw_poster_cards',
     name: 'Dos And Donts Visual Pair',
     triggers: [
       'do dont',
@@ -1667,7 +1602,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'hindari lakukan',
     ],
     useWhen: 'Correct vs incorrect behavior or setup needs visual clarity.',
-    layoutCandidates: ['dos_donts_visual_pair', 'comparison_with_header', 'dual_image_comparison'],
+    layoutCandidates: ['gw_poster_cards', 'gw_collage_showcase'],
     componentMix: ['header', '2 image_placeholder', 'body optional'],
     narrativeRole: 'Teach by visual contrast.',
   },
@@ -1676,7 +1611,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Outfit Or Style Board',
     triggers: ['outfit', 'fashion', 'beauty', 'style board', 'lookbook', 'aksesori', 'styling'],
     useWhen: 'Fashion, beauty, or styling content needs a look plus supporting details.',
-    layoutCandidates: ['outfit_or_style_board', 'moodboard_grid', 'collection_showcase'],
+    layoutCandidates: ['gw_collage_showcase'],
     componentMix: ['header', '4 image_placeholder', 'body optional'],
     narrativeRole: 'Show a complete style language.',
   },
@@ -1685,12 +1620,12 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
     name: 'Menu Or Food Combo',
     triggers: ['menu', 'food', 'makanan', 'minuman', 'combo', 'dish', 'kuliner', 'restoran'],
     useWhen: 'Food content needs hero dish plus side/drink/detail imagery.',
-    layoutCandidates: ['menu_or_food_combo', 'collection_showcase', 'mini_gallery_3up'],
+    layoutCandidates: ['gw_collage_showcase'],
     componentMix: ['header', '3-4 image_placeholder', 'body optional'],
     narrativeRole: 'Make offer variety appetizing.',
   },
   {
-    id: 'real_estate_room_pair',
+    id: 'gw_collage_showcase',
     name: 'Real Estate Room Pair',
     triggers: [
       'real estate',
@@ -1702,12 +1637,12 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'room pair',
     ],
     useWhen: 'Property or interior content needs two spaces shown together.',
-    layoutCandidates: ['real_estate_room_pair', 'moodboard_grid', 'dual_image_comparison'],
+    layoutCandidates: ['gw_collage_showcase'],
     componentMix: ['header', '2 image_placeholder', 'body optional'],
     narrativeRole: 'Help viewers compare spaces quickly.',
   },
   {
-    id: 'app_screen_flow',
+    id: 'gw_collage_showcase',
     name: 'App Screen Flow',
     triggers: [
       'app flow',
@@ -1719,12 +1654,12 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'onboarding screen',
     ],
     useWhen: 'A software workflow needs multiple screens in one slide.',
-    layoutCandidates: ['app_screen_flow', 'mini_gallery_3up', 'feature_visual_cards'],
+    layoutCandidates: ['gw_collage_showcase', 'gw_poster_cards'],
     componentMix: ['header', '2-3 image_placeholder', 'body optional'],
     narrativeRole: 'Explain product flow visually.',
   },
   {
-    id: 'social_proof_wall',
+    id: 'gw_collage_showcase',
     name: 'Social Proof Wall',
     triggers: [
       'proof wall',
@@ -1735,52 +1670,48 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'bukti hasil',
     ],
     useWhen: 'Several proof artifacts should build credibility together.',
-    layoutCandidates: [
-      'social_proof_wall',
-      'testimonial_with_portrait_and_product',
-      'case_study_snapshot_grid',
-    ],
+    layoutCandidates: ['gw_collage_showcase'],
     componentMix: ['header', '3-4 image_placeholder', 'quote optional'],
     narrativeRole: 'Stack proof without overexplaining.',
   },
   {
-    id: 'event_moment_grid',
+    id: 'gw_collage_showcase',
     name: 'Event Moment Grid',
     triggers: ['event', 'acara', 'seminar', 'workshop', 'stage', 'speaker', 'booth', 'audience'],
     useWhen: 'Event recap needs several moments in one slide.',
-    layoutCandidates: ['event_moment_grid', 'moodboard_grid', 'mini_gallery_3up'],
+    layoutCandidates: ['gw_collage_showcase'],
     componentMix: ['header', '4 image_placeholder', 'body optional'],
     narrativeRole: 'Show energy, scale, and participation.',
   },
   {
-    id: 'travel_itinerary_grid',
+    id: 'gw_collage_showcase',
     name: 'Travel Itinerary Grid',
     triggers: ['travel', 'itinerary', 'destinasi', 'wisata', 'hotel', 'landmark', 'liburan'],
     useWhen: 'Travel content needs destination, food, stay, and activity previews.',
-    layoutCandidates: ['travel_itinerary_grid', 'moodboard_grid', 'mini_gallery_3up'],
+    layoutCandidates: ['gw_collage_showcase'],
     componentMix: ['header', '4 image_placeholder', 'body optional'],
     narrativeRole: 'Preview itinerary variety at a glance.',
   },
   {
-    id: 'collection_showcase',
+    id: 'gw_collage_showcase',
     name: 'Collection Showcase',
     triggers: ['collection', 'koleksi', 'catalog', 'katalog', 'bundle', 'sku', 'produk pilihan'],
     useWhen: 'Multiple products or items should appear as a collection.',
-    layoutCandidates: ['collection_showcase', 'variant_selector_showcase', 'feature_visual_cards'],
+    layoutCandidates: ['gw_collage_showcase', 'gw_poster_cards'],
     componentMix: ['header', '3-4 image_placeholder', 'body optional'],
     narrativeRole: 'Show range and choice.',
   },
   {
-    id: 'variant_selector_showcase',
+    id: 'gw_collage_showcase',
     name: 'Variant Selector Showcase',
     triggers: ['variant', 'varian', 'warna', 'colorway', 'ukuran', 'material', 'pilihan'],
     useWhen: 'Product variants or choices should be compared visually.',
-    layoutCandidates: ['variant_selector_showcase', 'collection_showcase', 'dual_image_comparison'],
+    layoutCandidates: ['gw_collage_showcase'],
     componentMix: ['header', '3-4 image_placeholder', 'body optional'],
     narrativeRole: 'Make choices feel concrete and easy to compare.',
   },
   {
-    id: 'editorial_feature_spread',
+    id: 'gw_photo_statement',
     name: 'Editorial Feature Spread',
     triggers: [
       'editorial',
@@ -1791,48 +1722,48 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'longform',
     ],
     useWhen: 'A slide should feel like a magazine feature with headline, dek, and image.',
-    layoutCandidates: ['editorial_feature_spread', 'magazine_cover_story', 'article_column_layout'],
+    layoutCandidates: ['gw_photo_statement', 'gw_poster_statement'],
     componentMix: ['tag', 'header', 'body', 'image_placeholder'],
     narrativeRole: 'Make the content feel authored and publication-grade.',
   },
   {
-    id: 'magazine_cover_story',
+    id: 'gw_photo_statement',
     name: 'Magazine Cover Story',
     triggers: ['cover story', 'magazine cover', 'cover majalah', 'hero editorial', 'issue cover'],
     useWhen: 'The opening slide needs a dramatic publication-style cover.',
-    layoutCandidates: ['magazine_cover_story', 'cover_image_full', 'cover_editorial_left'],
+    layoutCandidates: ['gw_photo_statement', 'gw_poster_cover'],
     componentMix: ['tag', 'header', 'body optional', 'image_placeholder'],
     narrativeRole: 'Open with strong editorial presence.',
   },
   {
-    id: 'pullquote_editorial',
+    id: 'gw_poster_quote',
     name: 'Pullquote Editorial',
     triggers: ['pullquote', 'pull quote', 'kutipan besar', 'quote editorial', 'key quote'],
     useWhen: 'One sentence or quote should become a rhythm break.',
-    layoutCandidates: ['pullquote_editorial', 'quote_focus', 'quote_stat_combo'],
+    layoutCandidates: ['gw_poster_quote', 'gw_poster_stat'],
     componentMix: ['quote', 'body optional'],
     narrativeRole: 'Turn one important line into the slide anchor.',
   },
   {
-    id: 'article_column_layout',
+    id: 'gw_poster_statement',
     name: 'Article Column Layout',
     triggers: ['article', 'artikel', 'essay', 'esai', 'thought leadership', 'opini panjang'],
     useWhen: 'A slide needs more narrative explanation without becoming a plain paragraph.',
-    layoutCandidates: ['article_column_layout', 'text_stack', 'two_column_text'],
+    layoutCandidates: ['gw_poster_statement'],
     componentMix: ['header', 'body'],
     narrativeRole: 'Make dense explanation feel editorial and readable.',
   },
   {
-    id: 'editorial_image_caption_grid',
+    id: 'gw_photo_statement',
     name: 'Editorial Image Caption Grid',
     triggers: ['caption', 'image caption', 'caption grid', 'foto caption', 'callout editorial'],
     useWhen: 'An image needs caption-like explanation or a secondary detail image.',
-    layoutCandidates: ['editorial_image_caption_grid', 'image_full_caption', 'mini_gallery_3up'],
+    layoutCandidates: ['gw_photo_statement', 'gw_collage_showcase'],
     componentMix: ['header', 'body', '1-2 image_placeholder'],
     narrativeRole: 'Pair observation with visual evidence.',
   },
   {
-    id: 'profile_story_layout',
+    id: 'gw_photo_statement',
     name: 'Profile Story Layout',
     triggers: [
       'profile',
@@ -1843,43 +1774,39 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'personal brand',
     ],
     useWhen: 'The slide tells a person-led story.',
-    layoutCandidates: [
-      'profile_story_layout',
-      'testimonial_with_portrait_and_product',
-      'quote_with_image',
-    ],
+    layoutCandidates: ['gw_photo_statement', 'gw_collage_showcase', 'gw_poster_quote'],
     componentMix: ['header', 'body', 'image_placeholder portrait'],
     narrativeRole: 'Humanize the message through a profile frame.',
   },
   {
-    id: 'reportage_photo_essay',
+    id: 'gw_photo_statement',
     name: 'Reportage Photo Essay',
     triggers: ['reportage', 'jurnalistik', 'documentary', 'photo essay', 'foto esai', 'lapangan'],
     useWhen: 'The story needs a documentary/photo-essay feel.',
-    layoutCandidates: ['reportage_photo_essay', 'event_moment_grid', 'case_study_snapshot_grid'],
+    layoutCandidates: ['gw_photo_statement', 'gw_collage_showcase'],
     componentMix: ['header', 'body optional', '3 image_placeholder'],
     narrativeRole: 'Show observed reality through multiple images.',
   },
   {
-    id: 'opinion_big_statement',
+    id: 'gw_poster_statement',
     name: 'Opinion Big Statement',
     triggers: ['opinion', 'opini', 'hot take', 'contrarian', 'thesis', 'statement besar'],
     useWhen: 'A strong point of view needs a large editorial statement.',
-    layoutCandidates: ['opinion_big_statement', 'big_statement', 'pullquote_editorial'],
+    layoutCandidates: ['gw_poster_statement', 'gw_poster_quote'],
     componentMix: ['tag', 'header', 'body optional'],
     narrativeRole: 'Frame the thesis with authority.',
   },
   {
-    id: 'timeline_editorial',
+    id: 'gw_poster_list',
     name: 'Timeline Editorial',
     triggers: ['timeline', 'chronology', 'kronologi', 'milestone', 'fase', 'phase', 'perjalanan'],
     useWhen: 'A sequence across time needs editorial pacing.',
-    layoutCandidates: ['timeline_editorial', 'numbered_steps', 'step_visual_sequence'],
+    layoutCandidates: ['gw_poster_list', 'gw_collage_showcase'],
     componentMix: ['header', 'checklist'],
     narrativeRole: 'Turn time into a clear story arc.',
   },
   {
-    id: 'data_editorial',
+    id: 'gw_poster_stat',
     name: 'Data Editorial',
     triggers: [
       'data journalism',
@@ -1890,7 +1817,7 @@ const LAYOUT_RECIPES: LayoutRecipePreset[] = [
       'angka penting',
     ],
     useWhen: 'A metric needs interpretation, not just a stat slide.',
-    layoutCandidates: ['data_editorial', 'stat_highlight', 'big_stat_with_body'],
+    layoutCandidates: ['gw_poster_stat'],
     componentMix: ['header as metric', 'body insight'],
     narrativeRole: 'Make data feel like an editorial insight.',
   },
@@ -1908,10 +1835,53 @@ export function contentIntelligenceBankStats(): {
   };
 }
 
+/**
+ * Match a single trigger against the (lowercased) prompt.
+ *
+ * Two strategies depending on the trigger's nature:
+ *  - Word triggers (letters/digits, e.g. "ai", "cta", "eco"): matched with
+ *    Unicode-aware word boundaries so "ai" no longer matches inside "main",
+ *    "baik", "novels"→"vs", etc. This was a real false-positive bug where
+ *    short Indonesian/English words were silently caught as substrings.
+ *  - Symbol triggers (e.g. "%", "&"): matched as a literal substring since
+ *    word boundaries do not apply to non-word characters.
+ *
+ * Regex is cached per trigger string for performance: buildContentIntelligenceContext
+ * evaluates this against 150+ presets per call, and the trigger set is static.
+ */
+const triggerMatchCache = new Map<string, (lowerPrompt: string) => boolean>();
+
+function getTriggerMatcher(triggerLower: string): (lowerPrompt: string) => boolean {
+  const cached = triggerMatchCache.get(triggerLower);
+  if (cached) return cached;
+
+  // A "word" trigger contains at least one letter or digit. A "symbol"
+  // trigger is made only of non-word characters (e.g. "%", "+").
+  const isWordTrigger = /[a-z0-9]/i.test(triggerLower);
+
+  let matcher: (lowerPrompt: string) => boolean;
+  if (isWordTrigger) {
+    // Escape regex metacharacters, then require the match to NOT be
+    // preceded/followed by another word char. \p{L}\p{N} makes this
+    // Unicode-aware (so "baik" stays one word in Indonesian too).
+    const escaped = triggerLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'u');
+    matcher = (lowerPrompt) => re.test(lowerPrompt);
+  } else {
+    // Symbol trigger: literal substring is the correct semantics.
+    const sym = triggerLower;
+    matcher = (lowerPrompt) => lowerPrompt.includes(sym);
+  }
+
+  triggerMatchCache.set(triggerLower, matcher);
+  return matcher;
+}
+
 function scoreByTriggers(prompt: string, triggers: string[]): number {
   const lower = prompt.toLowerCase();
   return triggers.reduce((score, trigger) => {
-    return lower.includes(trigger.toLowerCase()) ? score + 1 : score;
+    const matcher = getTriggerMatcher(trigger.toLowerCase());
+    return matcher(lower) ? score + 1 : score;
   }, 0);
 }
 
@@ -1928,14 +1898,66 @@ function topByScore<T extends { triggers: string[] }>(
     .map((entry) => entry.item);
 }
 
+/**
+ * Valid layout ids allowed inside `layoutCandidates`. Used to guard against
+ * silent drift: if a layout is ever renamed/removed in the shared catalog
+ * but a preset here still references the old id, the AI would emit a
+ * `layout_variant_id` that no renderer template exists for, and the slide
+ * would silently fall back to a generic layout.
+ *
+ * `validateLayoutCandidates` runs at module load and throws loudly so the
+ * drift is caught at startup (and in CI/tests) instead of degrading quietly
+ * in production. Currently there is zero drift; this is a regression guard.
+ */
+import { LAYOUT_VARIANT_IDS } from '@leads-generator/shared';
+const ALLOWED_LAYOUT_IDS: ReadonlySet<string> = new Set(LAYOUT_VARIANT_IDS);
+
+function validateLayoutCandidates(
+  presets: Array<{ id: string; layoutCandidates: string[] }>,
+  source: string,
+): void {
+  const drift: Array<{ presetId: string; invalidIds: string[] }> = [];
+  for (const preset of presets) {
+    const invalidIds = preset.layoutCandidates.filter((id) => !ALLOWED_LAYOUT_IDS.has(id));
+    if (invalidIds.length > 0) drift.push({ presetId: preset.id, invalidIds });
+  }
+  if (drift.length > 0) {
+    const detail = drift
+      .map((d) => `  - ${d.presetId}: ${d.invalidIds.join(', ')}`)
+      .join('\n');
+    throw new Error(
+      `content-intelligence-bank: layoutCandidates drift detected in ${source}.\n` +
+        `The following ids are referenced but missing from the shared layout catalog.\n` +
+        `Update the preset(s) or the catalog so they stay in sync.\n${detail}`,
+    );
+  }
+}
+
+// Collect layoutCandidates from both recipes and narrative-arc slide roles,
+// then validate the whole set in one pass at module load.
+const ALL_PRESETS_WITH_LAYOUTS: Array<{ id: string; layoutCandidates: string[] }> = [
+  ...LAYOUT_RECIPES,
+  ...NARRATIVE_ARCS.flatMap((arc) =>
+    arc.slideRoles.map((role) => ({
+      id: `${arc.id}.${role.role}`,
+      layoutCandidates: role.layoutCandidates,
+    })),
+  ),
+];
+validateLayoutCandidates(ALL_PRESETS_WITH_LAYOUTS, 'LAYOUT_RECIPES + NARRATIVE_ARCS');
+
 export function buildContentIntelligenceContext(prompt: string, slideCount: number): string {
   const arcs = topByScore(NARRATIVE_ARCS, prompt, 2);
   const styles = topByScore(IMAGE_STYLES, prompt, 3);
   const recipes = topByScore(LAYOUT_RECIPES, prompt, 12);
 
-  const selectedArcs = arcs.length > 0 ? arcs : [NARRATIVE_ARCS[0]!];
+  // Fall back to the first few presets rather than hard-coded positional
+  // indexes ([1]!, [2]!, [3]!), which would crash at runtime if anyone ever
+  // reordered/removed the leading entries of these arrays. slice() returns
+  // an empty array if the bank is smaller than requested — still safe.
+  const selectedArcs = arcs.length > 0 ? arcs : NARRATIVE_ARCS.slice(0, 1);
   const selectedRecipes =
-    recipes.length > 0 ? recipes : [LAYOUT_RECIPES[1]!, LAYOUT_RECIPES[2]!, LAYOUT_RECIPES[3]!];
+    recipes.length > 0 ? recipes : LAYOUT_RECIPES.slice(0, 3);
 
   return JSON.stringify({
     instruction:

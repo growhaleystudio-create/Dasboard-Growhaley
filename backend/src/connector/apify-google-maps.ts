@@ -98,6 +98,14 @@ export class ApifyGoogleMapsConnector implements Source_Connector {
           acquiredAt: new Date(),
         };
 
+        if (item.phone) {
+          const digits = item.phone.replace(/\D/g, '');
+          if (digits) {
+            prospect.whatsappNumber = digits;
+            prospect.whatsappUrl = `https://wa.me/${digits}`;
+          }
+        }
+
         if (item.website) {
           prospect.profileUrl = item.website;
         }

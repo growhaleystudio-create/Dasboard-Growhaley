@@ -53,7 +53,6 @@ export interface ImageRepairContext {
   maxSlides: number;
   defaultTone: string;
   textGuardrailOptions: SduiTextGuardrailOptions;
-  preferEditorial: boolean;
   contentTags: string[];
   conversationContext: ContentConversationContextMessage[];
 }
@@ -264,7 +263,6 @@ export async function repairFailedOptionalImages(
     defaultTone,
     textGuardrailOptions,
     signal,
-    preferEditorial,
     contentTags,
     conversationContext,
   } = ctx;
@@ -289,7 +287,6 @@ export async function repairFailedOptionalImages(
       typographyOverride: textGuardrailOptions.typography,
       contentTags,
       conversationContext,
-      ...(preferEditorial ? { editorialBias: true } : {}),
     },
     signal,
   );
@@ -338,7 +335,6 @@ export async function repairFailedOptionalImages(
   // Re-enforce layout diversity with failed slides forced to no-image
   next = LayoutProcessor.enforceLayoutDiversity(next, {
     forceNoImageSlideNumbers: failedImageSlideNumbers,
-    preferEditorial,
   }).map((slide) => applySduiTextGuardrails(slide, textGuardrailOptions));
 
   // Final stamp: all failed slides marked as repaired

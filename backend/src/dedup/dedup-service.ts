@@ -28,8 +28,17 @@
 
 import type { Lead, NormalizedLead } from '@leads-generator/shared';
 
+function debugDedup(message: string): void {
+  // eslint-disable-next-line no-console
+  console.log(`[dedup] ${message}`);
+}
+
 import type { Tx } from '../db/transaction.js';
-import type { LeadAttributePatch, LeadInsert, LeadRepository } from '../repository/lead-repository.js';
+import type {
+  LeadAttributePatch,
+  LeadInsert,
+  LeadRepository,
+} from '../repository/lead-repository.js';
 
 import { buildIdentityKeys, type IdentityKey } from './identity.js';
 
@@ -61,10 +70,7 @@ export interface CanonicalLeadFinder {
    * matches ANY of the given normalized keys. Returns the existing Lead or
    * `null` when none match.
    */
-  findByIdentityKeys(
-    teamId: string,
-    keys: { kind: string; value: string }[],
-  ): Promise<Lead | null>;
+  findByIdentityKeys(teamId: string, keys: { kind: string; value: string }[]): Promise<Lead | null>;
 }
 
 /** Collaborators required by {@link DeduplicationService}. */
@@ -124,6 +130,9 @@ export class DeduplicationService {
     void tx;
 
     const keys = buildIdentityKeys(incoming);
+    debugDedup(
+      `ingest team=${incoming.teamId} name=${incoming.name ?? '-'} phone=${incoming.publicContact ?? '-'} profileUrl=${incoming.profileUrl ?? '-'} location=${incoming.location ?? '-'} keys=${keys.map((key) => `${key.kind}:${key.value}`).join(',') || 'none'}`,
+    );
 
     // R6.4 / R6.6: a Lead with no usable identity key can never match an
     // existing canonical, so skip the lookup and create directly.
@@ -131,6 +140,7 @@ export class DeduplicationService {
       keys.length === 0 ? null : await this.deps.finder.findByIdentityKeys(incoming.teamId, keys);
 
     if (canonical === null) {
+      debugDedup(`created team=${incoming.teamId} name=${incoming.name ?? '-'} reason=no-match`);
       const created = await this.deps.leads.insert(
         incoming.teamId,
         this.buildCanonicalInsert(incoming),
@@ -156,7 +166,42 @@ export class DeduplicationService {
     incoming: NormalizedLead,
     keys: IdentityKey[],
   ): Promise<DedupResult> {
-    void keys;
+    const matchingReasons: string[] = [];
+    for (const key of keys) {
+      switch (key.kind) {
+        case 'phone': {
+          const canonicalPhone = (canonical.publicContact ?? '').replace(/\D/g, '');
+          if (canonicalPhone.length > 0 && canonicalPhone === key.value) {
+            matchingReasons.push(`phone:${key.value}`);
+          }
+          break;
+        }
+        case 'profile_url':
+          if ((canonical.profileUrl ?? '').trim().toLowerCase() === key.value) {
+            matchingReasons.push(`profile_url:${key.value}`);
+          }
+          break;
+        case 'email':
+          if ((canonical.publicContact ?? '').trim().toLowerCase() === key.value) {
+            matchingReasons.push(`email:${key.value}`);
+          }
+          break;
+        case 'name_location': {
+          const canonicalName = (canonical.name ?? '').trim().toLowerCase();
+          const canonicalLocation = (canonical.location ?? '').trim().toLowerCase();
+          if (canonicalName.length > 0 && canonicalLocation.length > 0) {
+            const combined = `${canonicalName}|${canonicalLocation}`;
+            if (combined === key.value) matchingReasons.push(`name_location:${key.value}`);
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    debugDedup(
+      `merged incoming=${incoming.name ?? '-'} canonical=${canonical.name ?? '-'} canonicalId=${canonical.id} reasons=${matchingReasons.join(',') || 'unknown'} incomingPhone=${incoming.publicContact ?? '-'} canonicalPhone=${canonical.publicContact ?? '-'} incomingUrl=${incoming.profileUrl ?? '-'} canonicalUrl=${canonical.profileUrl ?? '-'} incomingLocation=${incoming.location ?? '-'} canonicalLocation=${canonical.location ?? '-'}`,
+    );
 
     // 1. Record the duplicate row so provenance is preserved (R6.1).
     const duplicateInsert: LeadInsert = {
@@ -207,10 +252,13 @@ export class DeduplicationService {
       discoveredAt: incoming.discoveredAt,
       aiIntentScore: null,
       aiState: 'none',
+      whatsappVerificationStatus: incoming.whatsappVerificationStatus,
       ...(incoming.name !== undefined ? { name: incoming.name } : {}),
       ...(incoming.publicContact !== undefined ? { publicContact: incoming.publicContact } : {}),
       ...(incoming.profileUrl !== undefined ? { profileUrl: incoming.profileUrl } : {}),
       ...(incoming.location !== undefined ? { location: incoming.location } : {}),
+      ...(incoming.whatsappUrl !== undefined ? { whatsappUrl: incoming.whatsappUrl } : {}),
+      ...(incoming.whatsappNumber !== undefined ? { whatsappNumber: incoming.whatsappNumber } : {}),
       ...(firstSource !== undefined
         ? { acquiredSource: firstSource, acquiredAt: incoming.discoveredAt }
         : {}),
@@ -249,6 +297,14 @@ export class DeduplicationService {
     const location = nonEmpty(incoming.location);
     if (isEmptyAttr(canonical.location) && location !== null) {
       patch.location = location;
+    }
+    const whatsappUrl = nonEmpty(incoming.whatsappUrl);
+    if (isEmptyAttr(canonical.whatsappUrl) && whatsappUrl !== null) {
+      patch.whatsappUrl = whatsappUrl;
+    }
+    const whatsappNumber = nonEmpty(incoming.whatsappNumber);
+    if (isEmptyAttr(canonical.whatsappNumber) && whatsappNumber !== null) {
+      patch.whatsappNumber = whatsappNumber;
     }
 
     return patch;

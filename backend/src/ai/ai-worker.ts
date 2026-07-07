@@ -9,6 +9,7 @@ export interface AiAnalysisJobData {
   leadId: string;
   trigger: 'scan' | 'manual';
   actorId?: string;
+  action?: 'analyze_scan' | 'regenerate_ai_insight';
 }
 
 export interface AiWorkerDeps {
@@ -21,10 +22,10 @@ export interface AiWorkerDeps {
  */
 export async function enqueueAiAnalysis(
   queue: Queue<AiAnalysisJobData>,
-  data: AiAnalysisJobData
+  data: AiAnalysisJobData,
 ): Promise<void> {
   await queue.add('analyze', data, {
-    jobId: `${data.teamId}:${data.leadId}:${data.trigger}:${Date.now()}`,
+    jobId: `${data.teamId}:${data.leadId}:${data.trigger}:${data.action ?? 'analyze_scan'}:${Date.now()}`,
     attempts: 1, // Do not auto-retry. It fails to 'unavailable' state (R13.13)
     removeOnComplete: true,
     removeOnFail: true,

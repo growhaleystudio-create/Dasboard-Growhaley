@@ -194,7 +194,7 @@ describe('SlideUtils', () => {
         {
           ...createMockSlide(1),
           layout_variant_id: 'cover_centered',
-          layout_family: 'cover',
+          layout_family: 'poster',
           image_requirement: 'none',
           image_status: 'not_needed',
           layout_source: 'ai_selected',
@@ -207,7 +207,7 @@ describe('SlideUtils', () => {
       expect(audit[0]).toEqual({
         slide_number: 1,
         layout_variant_id: 'cover_centered',
-        layout_family: 'cover',
+        layout_family: 'poster',
         image_requirement: 'none',
         layout_source: 'ai_selected',
         image_status: 'not_needed',

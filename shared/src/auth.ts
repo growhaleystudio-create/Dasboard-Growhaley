@@ -24,6 +24,7 @@ export type Action =
   | 'lead.write'
   | 'lead.delete'
   | 'lead.status.change'
+  | 'lead.whatsapp_verification.change'
   | 'note.write'
   | 'tag.write'
   | 'scan.execute'
@@ -35,7 +36,12 @@ export type Action =
   | 'ai.reanalyze'
   | 'ai.read_insight'
   | 'content.manage'
-  | 'content.generate';
+  | 'content.generate'
+  | 'survey.read'
+  | 'survey.write'
+  | 'survey.publish'
+  | 'survey.analyze'
+  | 'survey.export';
 
 /**
  * Activation status of a User_Membership row.

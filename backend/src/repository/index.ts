@@ -15,7 +15,9 @@ export {
   mapTeamConnectorRow,
   mapScoringModelRow,
   mapMembershipRow,
+  mapLeadScoreBreakdownRow,
   type LeadRow,
+  type LeadScoreBreakdownRow,
   type ScanConfigurationRow,
   type ScanJobRow,
   type TeamConnectorRow,
@@ -38,20 +40,17 @@ export {
 export { ScanJobRepository, type ScanJobInsert } from './scan-job-repository.js';
 export { TeamConnectorRepository } from './team-connector-repository.js';
 export { ScoringModelRepository } from './scoring-model-repository.js';
+export { LeadScoringBreakdownRepository } from './lead-scoring-breakdown-repository.js';
 export {
-  TeamAiSettingsRepository,
-  type TeamAiSettings,
-} from './team-ai-settings-repository.js';
-export {
-  AiCallLogRepository,
-  type AiCallLogInsert,
-} from './ai-call-log-repository.js';
-export {
-  BrandKitRepository,
-  type BrandKitRow_Public,
-  type BrandKitWithFonts,
-  type BrandFontResult,
-} from './brand-kit-repository.js';
+  LeadWebsiteAuditRepository,
+  cachedFromCustom,
+  cachedFromLighthouse,
+  toWebsiteAuditInputV2,
+  type CachedWebsiteAudit,
+  type CoreWebVitals,
+} from './lead-website-audit-repository.js';
+export { TeamAiSettingsRepository, type TeamAiSettings } from './team-ai-settings-repository.js';
+export { AiCallLogRepository, type AiCallLogInsert } from './ai-call-log-repository.js';
 export { MasterTemplateRepository } from './master-template-repository.js';
 export { ContentProviderSettingRepository } from './content-provider-setting-repository.js';
 export {
@@ -68,4 +67,7 @@ export {
   ApprovedExampleRepository,
   type ApprovedExampleResult,
 } from './approved-example-repository.js';
-
+export { SurveyRepository } from './survey-repository.js';
+export { SurveyQuestionRepository } from './survey-question-repository.js';
+export { SurveyResponseRepository } from './survey-response-repository.js';
+export { SurveyAnalysisRepository } from './survey-analysis-repository.js';

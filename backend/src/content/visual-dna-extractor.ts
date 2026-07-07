@@ -111,9 +111,10 @@ export class VisualDnaExtractor {
         });
       } else {
         const targetUrl = `${baseUrl}/v1beta/models/${textModel}:generateContent`;
-        response = await fetch(`${targetUrl}?key=${encodeURIComponent(apiKey)}`, {
+        response = await fetch(targetUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          // Key in header, never the URL query (avoids proxy/CDN log leaks).
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
           body: JSON.stringify({
             contents: [{
               parts: [

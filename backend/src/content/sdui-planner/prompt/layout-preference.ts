@@ -16,7 +16,16 @@ export function buildLayoutPreferencePromptSection({
   const sections: string[] = [];
   const styleGroup = layoutStyleGroupById(style);
 
-  if (styleGroup) {
+  if (styleGroup && styleGroup.supportsAllSlidesImage === false) {
+    // Poster group has zero image-capable variants → text-only is a HARD
+    // rule, not a preference. Forbid photo/collage entirely.
+    sections.push(`
+[USER-SELECTED LAYOUT STYLE — WAJIB]
+User memilih style "${styleGroup.label}" (${styleGroup.description}).
+- WAJIB: SEMUA slide pakai layout_variant_id dari daftar ini saja: ${JSON.stringify(styleGroup.variantIds)}.
+- DILARANG memakai layout foto/kolase (gw_photo_statement, gw_photo_rotated, gw_collage_showcase).
+- SEMUA slide WAJIB image_requirement="none" dan TANPA komponen image_placeholder. Deck ini 100% grafis/teks tanpa foto.`);
+  } else if (styleGroup) {
     sections.push(`
 [USER-SELECTED LAYOUT STYLE]
 User memilih style layout "${styleGroup.label}".

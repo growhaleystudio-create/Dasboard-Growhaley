@@ -24,7 +24,8 @@
     "clean": "rm -rf dist *.tsbuildinfo",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "check:dashboard-agent": "vitest run --config vitest.config.ts src/agent/dashboard-feature-registry.test.ts src/agent/dashboard-feature-registry-freshness.test.ts src/agent/dashboard-feature-registry-semantic.test.ts"
   },
   "devDependencies": {
     "fast-check": "3.23.2",

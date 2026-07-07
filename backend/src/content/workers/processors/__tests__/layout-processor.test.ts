@@ -18,7 +18,7 @@ function makeSlide(overrides: Partial<SduiSlide> = {}): SduiSlide {
     slide_number: 1,
     slide_type: 'content',
     container_layout: 'text_dominant',
-    layout_variant_id: 'text_stack',
+    layout_variant_id: 'gw_poster_statement',
     image_requirement: 'none',
     image_status: 'not_needed',
     layout_source: 'ai_selected',
@@ -36,7 +36,7 @@ function makeCoverSlide(): SduiSlide {
   return makeSlide({
     slide_number: 1,
     slide_type: 'cover',
-    layout_variant_id: 'cover_centered',
+    layout_variant_id: 'gw_poster_cover',
     nested_groups: {
       top_meta: [{ type: 'tag', text: 'START' }],
       core_content: [{ type: 'header', text: 'Cover Title' }],
@@ -47,7 +47,7 @@ function makeCoverSlide(): SduiSlide {
 
 function makeSlideWithImage(overrides: Partial<SduiSlide> = {}): SduiSlide {
   return makeSlide({
-    layout_variant_id: 'split_text_left_image_right',
+    layout_variant_id: 'gw_photo_rotated',
     image_requirement: 'optional',
     nested_groups: {
       top_meta: [],
@@ -83,8 +83,9 @@ describe('LayoutProcessor.compatibleVariants', () => {
     expect(variants).toBeDefined();
     expect(variants.length).toBeGreaterThan(0);
     // Text-only layouts should not include image variants
-    expect(variants).not.toContain('cover_image_full');
-    expect(variants).not.toContain('split_text_left_image_right');
+    expect(variants).not.toContain('gw_photo_rotated');
+    expect(variants).not.toContain('gw_photo_statement');
+    expect(variants).not.toContain('gw_collage_showcase');
   });
 
   it('returns image-capable layouts for slides with image placeholder', () => {
@@ -116,7 +117,7 @@ describe('LayoutProcessor.compatibleVariants', () => {
 
     const variants = LayoutProcessor.compatibleVariants(slide, 1);
 
-    expect(variants).toContain('feature_cards_with_header');
+    expect(variants).toContain('gw_poster_cards');
   });
 
   it('returns comparison layouts for slides with comparison component', () => {
@@ -139,7 +140,7 @@ describe('LayoutProcessor.compatibleVariants', () => {
 
     const variants = LayoutProcessor.compatibleVariants(slide, 1);
 
-    expect(variants).toContain('comparison_with_header');
+    expect(variants).toContain('gw_poster_cards');
   });
 
   it('returns checklist layouts for slides with checklist component', () => {
@@ -156,7 +157,7 @@ describe('LayoutProcessor.compatibleVariants', () => {
 
     const variants = LayoutProcessor.compatibleVariants(slide, 1);
 
-    expect(variants).toContain('checklist_stack');
+    expect(variants).toContain('gw_poster_list');
   });
 
   it('returns quote layouts for slides with quote component', () => {
@@ -170,7 +171,7 @@ describe('LayoutProcessor.compatibleVariants', () => {
 
     const variants = LayoutProcessor.compatibleVariants(slide, 1);
 
-    expect(variants).toContain('quote_focus');
+    expect(variants).toContain('gw_poster_quote');
   });
 
   it('returns CTA layouts for slides with button_cta component', () => {
@@ -187,7 +188,7 @@ describe('LayoutProcessor.compatibleVariants', () => {
 
     const variants = LayoutProcessor.compatibleVariants(slide, 1);
 
-    expect(variants).toContain('header_body_cta');
+    expect(variants).toContain('gw_poster_cta');
   });
 
   it('respects forceNoImage flag by filtering out image layouts', () => {
@@ -199,34 +200,12 @@ describe('LayoutProcessor.compatibleVariants', () => {
     expect(variantsNoImage.length).toBeLessThanOrEqual(variantsWithImage.length);
   });
 
-  it('includes editorial layouts when allowEditorialPool is true', () => {
-    const slide = makeSlide({
-      nested_groups: {
-        top_meta: [],
-        core_content: [
-          { type: 'header', text: 'Editorial Content' },
-          { type: 'body', text: 'Long-form editorial text' },
-        ],
-        action_footer: [],
-      },
-    });
-
-    const variantsWithEditorial = LayoutProcessor.compatibleVariants(slide, 1, false, true);
-
-    expect(variantsWithEditorial).toBeDefined();
-    // Editorial layouts should be in the pool when explicitly allowed
-    const hasEditorial = variantsWithEditorial.some(
-      (id) => id.includes('editorial') || id === 'pullquote_editorial',
-    );
-    expect(hasEditorial || variantsWithEditorial.length > 0).toBe(true);
-  });
-
   it('returns cover layouts for first slide (index 0)', () => {
     const slide = makeCoverSlide();
 
     const variants = LayoutProcessor.compatibleVariants(slide, 0);
 
-    expect(variants).toContain('cover_centered');
+    expect(variants).toContain('gw_poster_cover');
   });
 });
 
@@ -240,17 +219,16 @@ describe('LayoutProcessor.canonicalWorkerLayoutVariantId', () => {
     expect(result).toBeUndefined();
   });
 
-  it('returns the same ID if no alias exists', () => {
-    const result = LayoutProcessor.canonicalWorkerLayoutVariantId('text_stack');
-    expect(result).toBe('text_stack');
+  it('returns the same ID for catalog variants (identity passthrough)', () => {
+    const result = LayoutProcessor.canonicalWorkerLayoutVariantId('gw_poster_statement');
+    expect(result).toBe('gw_poster_statement');
   });
 
-  it('resolves legacy alias to canonical ID', () => {
-    // Assuming 'mockup-standard' maps to 'split_text_left_image_right'
+  it('passes any ID through unchanged (single id space, no alias resolution)', () => {
     const result = LayoutProcessor.canonicalWorkerLayoutVariantId(
-      'mockup-standard' as LayoutVariantId,
+      'gw_photo_rotated' as LayoutVariantId,
     );
-    expect(result).toBe('split_text_left_image_right');
+    expect(result).toBe('gw_photo_rotated');
   });
 });
 
@@ -262,48 +240,44 @@ describe('LayoutProcessor.applyLayoutFields', () => {
   it('applies layout fields and returns text-guardrailed slide', () => {
     const slide = makeSlide();
 
-    const result = LayoutProcessor.applyLayoutFields(slide, 'text_stack', 'worker_adjusted');
+    const result = LayoutProcessor.applyLayoutFields(slide, 'gw_poster_statement', 'worker_adjusted');
 
-    expect(result.layout_variant_id).toBe('text_stack');
+    expect(result.layout_variant_id).toBe('gw_poster_statement');
     expect(result.layout_source).toBe('worker_adjusted');
     expect(result.container_layout).toBeDefined();
   });
 
-  it('sets container_layout to background_overlay for cover_image_full', () => {
+  it('sets container_layout to background_overlay for gw_photo_statement', () => {
     const slide = makeSlideWithImage({
-      layout_variant_id: 'cover_image_full',
+      layout_variant_id: 'gw_photo_statement',
       slide_type: 'cover',
     });
 
-    const result = LayoutProcessor.applyLayoutFields(slide, 'cover_image_full', 'ai_selected');
+    const result = LayoutProcessor.applyLayoutFields(slide, 'gw_photo_statement', 'ai_selected');
 
-    // cover_image_full should get background_overlay when it's an image_focus layout
-    expect(result.container_layout).toBeDefined();
-    expect(['background_overlay', 'text_dominant']).toContain(result.container_layout);
+    // photo-family layouts get background_overlay
+    expect(result.container_layout).toBe('background_overlay');
     expect(result.contentDirection).toBeDefined();
   });
 
-  it('sets container_layout for image_split layouts', () => {
+  it('sets container_layout to background_overlay for photo layouts', () => {
     const slide = makeSlideWithImage();
 
     const result = LayoutProcessor.applyLayoutFields(
       slide,
-      'split_text_left_image_right',
+      'gw_photo_rotated',
       'ai_selected',
     );
 
-    // Layout processor applies appropriate container_layout based on family
-    expect(result.container_layout).toBeDefined();
-    expect(['split_screen', 'text_dominant', 'background_overlay']).toContain(
-      result.container_layout,
-    );
+    // Layout processor applies container_layout based on family (photo/collage → background_overlay)
+    expect(result.container_layout).toBe('background_overlay');
     expect(result.contentDirection).toBeDefined();
   });
 
-  it('sets container_layout to text_dominant for text-only layouts', () => {
+  it('sets container_layout to text_dominant for poster layouts', () => {
     const slide = makeSlide();
 
-    const result = LayoutProcessor.applyLayoutFields(slide, 'text_stack', 'ai_selected');
+    const result = LayoutProcessor.applyLayoutFields(slide, 'gw_poster_statement', 'ai_selected');
 
     expect(result.container_layout).toBe('text_dominant');
     expect(result.contentDirection).toBe('column');
@@ -320,7 +294,7 @@ describe('LayoutProcessor.applyLayoutFields', () => {
       },
     });
 
-    const result = LayoutProcessor.applyLayoutFields(slide, 'text_stack', 'ai_selected');
+    const result = LayoutProcessor.applyLayoutFields(slide, 'gw_poster_statement', 'ai_selected');
 
     const header = result.nested_groups.core_content?.find((c) => c.type === 'header');
     expect(header?.text?.length).toBeLessThanOrEqual(120); // Guardrail should truncate
@@ -425,7 +399,7 @@ describe('LayoutProcessor.normalizeSlideMetadata', () => {
 
   it('adds layout_family based on layout_variant_id', () => {
     const slide = makeSlide({
-      layout_variant_id: 'text_stack',
+      layout_variant_id: 'gw_poster_statement',
     });
 
     const result = LayoutProcessor.normalizeSlideMetadata(slide);
@@ -456,30 +430,62 @@ describe('LayoutProcessor.enforceLayoutDiversity', () => {
       makeCoverSlide(),
       makeSlideWithImage({
         slide_number: 2,
-        layout_variant_id: 'split_text_left_image_right',
-        container_layout: 'split_screen',
-        contentDirection: 'row',
+        layout_variant_id: 'gw_photo_rotated',
+        container_layout: 'background_overlay',
+        contentDirection: 'column',
       }),
     ];
 
     const result = LayoutProcessor.enforceLayoutDiversity(slides);
 
-    expect(result[1]?.layout_variant_id).toBe('split_text_left_image_right');
+    expect(result[1]?.layout_variant_id).toBe('gw_photo_rotated');
   });
 
   it('enforces layout diversity across multiple slides', () => {
     const slides: SduiSlide[] = [
       makeCoverSlide(),
-      makeSlide({ slide_number: 2, layout_variant_id: 'text_stack' }),
-      makeSlide({ slide_number: 3, layout_variant_id: 'text_stack' }),
-      makeSlide({ slide_number: 4, layout_variant_id: 'text_stack' }),
-      makeSlide({ slide_number: 5, layout_variant_id: 'text_stack' }),
+      makeSlide({ slide_number: 2, layout_variant_id: 'gw_poster_statement' }),
+      makeSlide({ slide_number: 3, layout_variant_id: 'gw_poster_statement' }),
+      makeSlide({ slide_number: 4, layout_variant_id: 'gw_poster_statement' }),
+      makeSlide({ slide_number: 5, layout_variant_id: 'gw_poster_statement' }),
     ];
 
     const result = LayoutProcessor.enforceLayoutDiversity(slides);
 
     const uniqueLayouts = new Set(result.map((s) => s.layout_variant_id));
     expect(uniqueLayouts.size).toBeGreaterThan(1);
+  });
+
+  it('respectExplicitVariants keeps the user-picked compatible layout verbatim', () => {
+    // Two consecutive identical, content-compatible variants: diversity would
+    // normally reshuffle slide 3, but the explicit-preview flag preserves both.
+    const slides: SduiSlide[] = [
+      makeCoverSlide(),
+      makeSlide({ slide_number: 2, layout_variant_id: 'gw_poster_statement' }),
+      makeSlide({ slide_number: 3, layout_variant_id: 'gw_poster_statement' }),
+    ];
+
+    const respected = LayoutProcessor.enforceLayoutDiversity(slides, {
+      respectExplicitVariants: true,
+    });
+    expect(respected[1]?.layout_variant_id).toBe('gw_poster_statement');
+    expect(respected[2]?.layout_variant_id).toBe('gw_poster_statement');
+
+    const reshuffled = LayoutProcessor.enforceLayoutDiversity(slides);
+    expect(reshuffled[2]?.layout_variant_id).not.toBe('gw_poster_statement');
+  });
+
+  it('respectExplicitVariants still falls back when the layout is incompatible', () => {
+    // gw_poster_list needs a checklist; a plain header slide can't use it, so
+    // the flag must not force an invalid layout.
+    const slides: SduiSlide[] = [
+      makeCoverSlide(),
+      makeSlide({ slide_number: 2, layout_variant_id: 'gw_poster_list' }),
+    ];
+    const result = LayoutProcessor.enforceLayoutDiversity(slides, {
+      respectExplicitVariants: true,
+    });
+    expect(result[1]?.layout_variant_id).not.toBe('gw_poster_list');
   });
 
   it('avoids consecutive identical layouts', () => {
@@ -522,30 +528,6 @@ describe('LayoutProcessor.enforceLayoutDiversity', () => {
     const slide3 = result[2];
     expect(slide2).toBeDefined();
     expect(slide3).toBeDefined();
-  });
-
-  it('prefers editorial layouts when preferEditorial option is true', () => {
-    const slides: SduiSlide[] = [
-      makeCoverSlide(),
-      makeSlide({
-        slide_number: 2,
-        layout_variant_id: 'pullquote_editorial',
-        nested_groups: {
-          top_meta: [],
-          core_content: [{ type: 'quote', text: 'Editorial quote' }],
-          action_footer: [],
-        },
-      }),
-      makeSlide({ slide_number: 3 }),
-    ];
-
-    const result = LayoutProcessor.enforceLayoutDiversity(slides, {
-      preferEditorial: true,
-    });
-
-    // Planner's editorial choice should be preserved
-    const slide2 = result.find((s) => s.slide_number === 2);
-    expect(slide2?.layout_variant_id).toBe('pullquote_editorial');
   });
 
   it('maintains at least 2 unique layout families for 4+ slides', () => {
@@ -610,13 +592,11 @@ describe('LayoutProcessor.enforceLayoutDiversity', () => {
   });
 
   it('avoids TEXT_SAFE_LAYOUTS when richer options exist', () => {
-    const textSafeLayouts = ['text_centered', 'text_stack', 'big_statement'];
-
     const slides: SduiSlide[] = [
       makeCoverSlide(),
       makeSlide({
         slide_number: 2,
-        layout_variant_id: 'text_centered',
+        layout_variant_id: 'gw_poster_statement',
         nested_groups: {
           top_meta: [],
           core_content: [

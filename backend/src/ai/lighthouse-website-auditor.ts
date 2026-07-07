@@ -96,6 +96,17 @@ export class LighthouseWebsiteAuditor implements WebsiteAuditor {
             auditNumeric(lhr.audits, 'experimental-interaction-to-next-paint') ??
             auditNumeric(lhr.audits, 'interaction-to-next-paint'),
         }) as LighthouseMetrics;
+        const anchorItems = detailsItems(lhr.audits?.['crawlable-anchors']?.details);
+        const whatsappContact = extractWhatsappContact(
+          anchorItems.map((item) => {
+            const href = stringField(item.href);
+            const text = stringField(item.text) ?? nestedStringField(item.node, 'snippet');
+            return {
+              ...(href ? { href } : { href: '' }),
+              ...(text ? { text } : { text: '' }),
+            };
+          }),
+        );
         const signals = signalsFromLhr(lhr);
         const issues = buildIssues(lighthouseMetrics, signals, finalUrl);
         const solutions = buildSolutions(lighthouseMetrics, signals, finalUrl);
@@ -106,6 +117,7 @@ export class LighthouseWebsiteAuditor implements WebsiteAuditor {
           status: 'ok',
           url: normalizedUrl,
           finalUrl,
+          ...whatsappContact,
           ...(httpStatus !== undefined ? { httpStatus } : {}),
           ...(loadTimeSeconds !== undefined ? { loadTimeSeconds } : {}),
           httpsEnabled: finalUrl.toLowerCase().startsWith('https://'),
@@ -188,6 +200,43 @@ function emptySignals(): PublicWebsiteAudit['signals'] {
     scriptCount: 0,
     stylesheetCount: 0,
   };
+}
+
+export function extractWhatsappContact(
+  links: { href?: string; text?: string }[],
+): { whatsappUrl?: string; whatsappNumber?: string } {
+  for (const link of links) {
+    const href = typeof link.href === 'string' ? link.href.trim() : '';
+    if (!href) continue;
+
+    const waMeMatch = /^https?:\/\/wa\.me\/(\d+)/i.exec(href);
+    if (waMeMatch?.length && waMeMatch[1]) {
+      const whatsappNumber = waMeMatch[1];
+      return {
+        whatsappUrl: `https://wa.me/${whatsappNumber}`,
+        whatsappNumber,
+      };
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(href);
+    } catch {
+      continue;
+    }
+
+    if (/^api\.whatsapp\.com$/i.test(parsed.hostname) && parsed.pathname === '/send') {
+      const whatsappDigits = parsed.searchParams.get('phone')?.replace(/\D/g, '') ?? '';
+      if (whatsappDigits) {
+        return {
+          whatsappUrl: `https://wa.me/${whatsappDigits}`,
+          whatsappNumber: whatsappDigits,
+        };
+      }
+    }
+  }
+
+  return {};
 }
 
 function signalsFromLhr(lhr: LighthouseResult): PublicWebsiteAudit['signals'] {

@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 export const AUTH_UNAUTHORIZED_EVENT = 'auth:unauthorized';
 
 interface ErrorPayload {
@@ -34,7 +34,12 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
   const url = `${API_URL}${endpoint}`;
   
   const headers = new Headers(options.headers);
-  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+  // Only set the JSON content-type when there is a body to send. An empty body
+  // with Content-Type: application/json makes Fastify reject the request with
+  // FST_ERR_CTP_EMPTY_JSON_BODY, which breaks bodyless POSTs (e.g. survey
+  // publish/unpublish/close). FormData sets its own multipart boundary.
+  const hasBody = options.body !== undefined && options.body !== null;
+  if (hasBody && !headers.has('Content-Type') && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
 

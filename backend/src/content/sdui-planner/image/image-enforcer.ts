@@ -32,17 +32,15 @@ function visualLayerNeedsGeneratedArtwork(component: SduiComponent): boolean {
 }
 
 function preferredImageLayoutVariant(slide: SduiSlide): string {
-  if (slide.slide_type === 'cover') return 'cover_image_full';
-  if (hasComponent(slide, 'checklist')) return 'split_checklist_image';
-  if (hasComponent(slide, 'header') && hasComponent(slide, 'body'))
-    return 'split_text_left_image_right';
-  return 'image_full_caption';
+  if (slide.slide_type === 'cover') return 'gw_photo_statement';
+  if (hasComponent(slide, 'header') && !hasComponent(slide, 'body')) return 'gw_photo_rotated';
+  return 'gw_photo_statement';
 }
 
 function layoutFamilyForVariant(variantId: string): string | undefined {
-  if (variantId.startsWith('cover_')) return 'cover';
-  if (variantId.startsWith('split_')) return 'split';
-  if (variantId.startsWith('image_')) return 'image_focus';
+  if (variantId.startsWith('gw_photo_')) return 'photo';
+  if (variantId.startsWith('gw_collage_')) return 'collage';
+  if (variantId.startsWith('gw_poster_')) return 'poster';
   return undefined;
 }
 
@@ -90,8 +88,8 @@ export function ensureImagePlaceholderForVisualLayers(
 
     return {
       ...slide,
-      container_layout: slide.slide_type === 'cover' ? 'background_overlay' : 'split_screen',
-      contentDirection: slide.slide_type === 'cover' ? 'column' : 'row',
+      container_layout: 'background_overlay',
+      contentDirection: 'column',
       layout_variant_id: layoutVariant,
       ...(layoutFamily ? { layout_family: layoutFamily as any } : {}),
       layout_source:
@@ -174,8 +172,8 @@ export function ensureExplicitImageRequest(prompt: string, slides: SduiSlide[]):
 
     visualLayerNormalized[index] = {
       ...slideWithoutImageStatus,
-      container_layout: slide.slide_type === 'cover' ? 'background_overlay' : 'split_screen',
-      contentDirection: slide.slide_type === 'cover' ? 'column' : 'row',
+      container_layout: 'background_overlay',
+      contentDirection: 'column',
       layout_variant_id: layoutVariant,
       layout_family: layoutFamilyForVariant(layoutVariant) as any,
       layout_source: 'worker_adjusted',

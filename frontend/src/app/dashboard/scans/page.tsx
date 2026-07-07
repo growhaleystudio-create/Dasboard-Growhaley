@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Search } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CreateScanResponse, ScanConfigurationListItem } from '@/lib/types';
 
@@ -41,6 +43,9 @@ export default function ScansPage() {
   const [isScanProgressVisible, setIsScanProgressVisible] = useState(false);
   const [scanProgressStatus, setScanProgressStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
 
+  const [search, setSearch] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('All');
+
   useEffect(() => {
     if (!isScanProgressVisible || scanProgressStatus !== 'running') return;
 
@@ -61,6 +66,17 @@ export default function ScansPage() {
     queryFn: () => fetchApi<ScanConfigurationListItem[]>(`/api/teams/${teamId}/scans`),
     enabled: !!teamId,
   });
+
+  const filteredScans = React.useMemo(() => {
+    return (scansData ?? []).filter((scan) => {
+      const keywordsStr = scan.keywords.join(', ').toLowerCase();
+      const locationStr = (scan.location ?? '').toLowerCase();
+      const query = search.toLowerCase();
+      const matchesSearch = keywordsStr.includes(query) || locationStr.includes(query);
+      const matchesSource = sourceFilter === 'All' || scan.sourceIds.includes(sourceFilter);
+      return matchesSearch && matchesSource;
+    });
+  }, [scansData, search, sourceFilter]);
 
   const createScanMutation = useMutation({
     mutationFn: async (formData: typeof newScanForm) => {
@@ -155,15 +171,15 @@ export default function ScansPage() {
           </div>
           <Skeleton className="h-10 w-24" />
         </div>
-        <div className="overflow-hidden rounded-2xl border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
-          <Skeleton className="mb-4 h-6 w-32" />
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left">
-              <tbody>
-                <TableSkeleton columns={7} />
-              </tbody>
-            </table>
+        <div className="overflow-hidden rounded-2xl border border-stroke-soft-200 bg-bg-white-0 shadow-none">
+          <div className="p-4 border-b border-stroke-soft-200">
+            <Skeleton className="mb-4 h-6 w-32" />
           </div>
+          <Table className="border-0 shadow-none">
+            <tbody>
+              <TableSkeleton columns={7} />
+            </tbody>
+          </Table>
         </div>
       </div>
     );
@@ -171,43 +187,82 @@ export default function ScansPage() {
   if (!teamId) return <div className="p-4">Error: No active team session.</div>;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="overflow-hidden rounded-2xl border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-text-strong-950">Recent Scans</h2>
-          <Button onClick={() => setIsModalOpen(true)}>New Scan</Button>
+    <div className="flex w-full flex-col gap-5 pb-12">
+      {/* Sub Header & Actions */}
+      <div className="flex flex-col gap-4">
+        <PageHeader
+          title="Recent Scans"
+          description="Manage and run keyword-based scraping jobs to discover new leads."
+          actions={<Button onClick={() => setIsModalOpen(true)}>New Scan</Button>}
+        />
+
+        {/* Filter Bar */}
+        <div className="grid gap-3 rounded-2xl border border-stroke-soft-200 bg-white p-4 shadow-none sm:grid-cols-2 xl:grid-cols-6">
+          <Select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            options={[
+              { label: 'All sources', value: 'All' },
+              { label: 'Google Maps', value: 'google' },
+              { label: 'Instagram', value: 'instagram' },
+              { label: 'LinkedIn', value: 'linkedin' },
+            ]}
+          />
+        </div>
+      </div>
+
+      {/* Table Area */}
+      <div className="mt-2 flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="w-full sm:max-w-[320px]">
+            <Input
+              placeholder="Search scans by keyword or location..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              leftIcon={<Search size={16} />}
+            />
+          </div>
         </div>
         {isScansLoading ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left">
-              <tbody>
-                <TableSkeleton columns={7} />
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Table className="border-0 rounded-none">
+          <Table>
             <TableHeader>
-              <TableRow className="border-b-0 bg-bg-weak-50 hover:bg-bg-weak-50">
-                <TableHead className="rounded-l-lg font-normal text-text-sub-600">Target / Keywords</TableHead>
-                <TableHead className="font-normal text-text-sub-600">Source</TableHead>
-                <TableHead className="font-normal text-text-sub-600">Schedule</TableHead>
-                <TableHead className="font-normal text-text-sub-600">Status</TableHead>
-                <TableHead className="font-normal text-text-sub-600">Leads Found</TableHead>
-                <TableHead className="font-normal text-text-sub-600">Created At</TableHead>
-                <TableHead className="rounded-r-lg font-normal text-text-sub-600">Actions</TableHead>
+              <TableRow>
+                <TableHead>Target / Keywords</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Schedule</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Leads Found</TableHead>
+                <TableHead>Created At</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <tbody>
-              {(!scansData || scansData.length === 0) ? (
+              <TableSkeleton columns={7} />
+            </tbody>
+          </Table>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Target / Keywords</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Schedule</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Leads Found</TableHead>
+                <TableHead>Created At</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <tbody>
+              {filteredScans.length === 0 ? (
                 <TableRow>
                   <TableCell className="text-center py-8" colSpan={7}>
-                    No scans found. Create one to start generating leads.
+                    No scans found matching your search.
                   </TableCell>
                 </TableRow>
               ) : (
-                scansData.map((scan) => (
-                  <TableRow key={scan.id} className="hover:bg-[#fcfcfd]">
+                filteredScans.map((scan) => (
+                  <TableRow key={scan.id}>
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="font-medium text-text-strong-950">{scan.keywords.join(', ') || '-'}</span>
@@ -232,7 +287,7 @@ export default function ScansPage() {
                     <TableCell>
                       <Button 
                         variant="primary" 
-                        size="sm"
+                        size="md"
                         disabled={runMutation.isPending}
                         onClick={() => runMutation.mutate(scan.id)}
                       >

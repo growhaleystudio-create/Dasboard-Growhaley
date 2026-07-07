@@ -3,8 +3,8 @@
  *
  * Currently exposes the privacy-safe {@link buildPublicLeadSnapshot}
  * projection and its allow-list metadata (Task 17.9, R13.7). Subsequent
- * tasks add the Gemini_Client, AI_Budget_Tracker, and the queue-driven
- * analyzer that consumes these snapshots.
+ * tasks add the provider-agnostic text AI client, AI_Budget_Tracker, and
+ * the queue-driven analyzer that consumes these snapshots.
  */
 
 export {
@@ -22,10 +22,11 @@ export {
 } from './ai-budget-tracker.js';
 
 export {
-  GeminiClient,
+  AiTextProviderClient,
+  AiProviderError,
   type AiProvider,
   type AiProviderResult,
-} from './gemini-client.js';
+} from './ai-text-provider-client.js';
 
 export {
   AiAnalyzerService,

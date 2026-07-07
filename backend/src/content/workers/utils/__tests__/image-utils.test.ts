@@ -28,12 +28,15 @@ describe('ImageUtils', () => {
   });
 
   describe('getPlaceholderAspect', () => {
-    it('should return canvas aspect for cover_image_full layout', () => {
-      const slide: Partial<SduiSlide> = {
-        layout_variant_id: 'cover_image_full',
+    it('should return canvas aspect for photo and collage layouts', () => {
+      const photoSlide: Partial<SduiSlide> = {
+        layout_variant_id: 'gw_photo_statement',
       };
-      expect(ImageUtils.getPlaceholderAspect(slide as SduiSlide, '9:16')).toBe('9:16');
-      expect(ImageUtils.getPlaceholderAspect(slide as SduiSlide, '9:16')).toBe('9:16');
+      const collageSlide: Partial<SduiSlide> = {
+        layout_variant_id: 'gw_collage_showcase',
+      };
+      expect(ImageUtils.getPlaceholderAspect(photoSlide as SduiSlide, '9:16')).toBe('9:16');
+      expect(ImageUtils.getPlaceholderAspect(collageSlide as SduiSlide, '9:16')).toBe('9:16');
     });
 
     it('should return 1:1 for non-cover layouts', () => {
@@ -46,9 +49,9 @@ describe('ImageUtils', () => {
   });
 
   describe('getGeneratedAspect', () => {
-    it('should return canvas aspect for cover_image_full', () => {
+    it('should return canvas aspect for gw_photo layouts', () => {
       const slide: Partial<SduiSlide> = {
-        layout_variant_id: 'cover_image_full',
+        layout_variant_id: 'gw_photo_statement',
       };
       expect(ImageUtils.getGeneratedAspect(slide as SduiSlide, '9:16')).toBe('9:16');
       expect(ImageUtils.getGeneratedAspect(slide as SduiSlide, '9:16')).toBe('9:16');

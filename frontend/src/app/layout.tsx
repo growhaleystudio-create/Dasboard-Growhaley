@@ -1,10 +1,10 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import { Lato } from 'next/font/google';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import { QueryProvider } from '@/components/QueryProvider';
 import { Toaster } from '@/components/ui/Toaster';
 
-const lato = Lato({ subsets: ['latin'], weight: ['300', '400', '700', '900'], variable: '--font-lato' });
+const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-plus-jakarta-sans' });
 
 export const metadata: Metadata = {
   title: 'Leads Generator Dashboard',
@@ -18,7 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${lato.variable} font-inter antialiased bg-bg-white-0 text-text-strong-950`}>
+      <body className={`${plusJakartaSans.variable} font-sans antialiased bg-bg-white-0 text-text-strong-950`}>
         <QueryProvider>{children}</QueryProvider>
         <Toaster />
       </body>

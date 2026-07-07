@@ -15,6 +15,7 @@ import { Worker, type Job } from 'bullmq';
 import type { RedisOptions } from 'ioredis';
 
 import type { SduiSlide, SduiDocument, SduiTypographyOverride } from '@leads-generator/shared';
+import { CONTENT_JOB_MAX_RUNTIME_MS } from '@leads-generator/shared';
 
 import type { ContentGenerationJobPayload } from './content-generator-service.js';
 import { CONTENT_GENERATION_QUEUE_NAME } from './content-generator-service.js';
@@ -22,15 +23,14 @@ import type { SduiPlanner } from './sdui-planner/index.js';
 import {
   ensureExplicitImageRequest,
   promptExplicitlyRequestsImages,
+  promptExplicitlyRequestsNoImages,
 } from './sdui-planner/index.js';
+import { layoutStyleGroupById } from '@leads-generator/shared';
 import { applySduiTextGuardrails } from './sdui-text-guardrails.js';
 import type { SatoriRenderer, BrandFontRef } from './satori-renderer.js';
 import type { BackgroundImageClient } from './background-image-client.js';
 import type { ObjectStorage } from './object-storage.js';
-import {
-  generateSlideImages,
-  failJobForRequiredImageFailures,
-} from './workers/pipeline/image-generation-handler.js';
+import { generateSlideImages } from './workers/pipeline/image-generation-handler.js';
 import { renderAndUploadSlides } from './workers/pipeline/render-phase-handler.js';
 import { runQualityGate } from './workers/pipeline/quality-gate.js';
 import { acquireInitialSlides } from './workers/pipeline/slide-acquisition.js';
@@ -43,7 +43,7 @@ import { SlideRepair } from './workers/processors/slide-repair.js';
 import type { ContentGenerationJobRepository } from '../repository/content-generation-job-repository.js';
 import type { ContentGenerationSlideRepository } from '../repository/content-generation-slide-repository.js';
 import type { MasterTemplateRepository } from '../repository/master-template-repository.js';
-import type { BrandKitRepository } from '../repository/brand-kit-repository.js';
+import { GROWHALEY_BRAND_KIT } from './growhaley-brand.js';
 
 export interface SduiCarouselWorkerDeps {
   planner: SduiPlanner;
@@ -53,7 +53,6 @@ export interface SduiCarouselWorkerDeps {
   jobRepo: ContentGenerationJobRepository;
   slideRepo: ContentGenerationSlideRepository;
   masterTemplateRepo: MasterTemplateRepository;
-  brandKitRepo: BrandKitRepository;
   redisUrl: string;
 }
 
@@ -65,6 +64,33 @@ const DEFAULT_GENERATION_RULES = {
   maxSlides: 7,
   defaultTone: 'professional',
 } as const;
+
+/**
+ * Strip a slide down to text-only: drop every image_placeholder, force
+ * image_requirement="none", and release any photo/collage layout so the
+ * template picker re-selects a poster variant by content. Runs before image
+ * generation so no wasted image API calls happen for a text-only deck.
+ */
+function coerceTextOnlySlide(slide: SduiSlide): SduiSlide {
+  const strip = (components: SduiSlide['nested_groups']['core_content']) =>
+    (components ?? []).filter((c) => c.type !== 'image_placeholder');
+  const isPhotoLayout =
+    slide.layout_variant_id === 'gw_photo_rotated' ||
+    slide.layout_variant_id === 'gw_photo_statement' ||
+    slide.layout_variant_id === 'gw_collage_showcase';
+  const { layout_variant_id: _drop, ...rest } = slide;
+  return {
+    ...rest,
+    ...(isPhotoLayout ? {} : { layout_variant_id: slide.layout_variant_id }),
+    image_requirement: 'none',
+    image_status: 'not_needed',
+    nested_groups: {
+      top_meta: strip(slide.nested_groups.top_meta),
+      core_content: strip(slide.nested_groups.core_content),
+      action_footer: strip(slide.nested_groups.action_footer),
+    },
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Main Job Processor
@@ -104,11 +130,7 @@ export async function processSduiCarouselJob(
   const maxSlides = masterTemplate?.maxSlides ?? DEFAULT_GENERATION_RULES.maxSlides;
   const defaultTone = masterTemplate?.defaultTone ?? DEFAULT_GENERATION_RULES.defaultTone;
 
-  const brandKit = await deps.brandKitRepo.findByTeam(teamId);
-  if (!brandKit) {
-    await deps.jobRepo.setStatus(teamId, jobId, 'failed', 'off_brand');
-    return;
-  }
+  const brandKit = GROWHALEY_BRAND_KIT;
 
   const aspectRatio = jobRow.aspectRatio;
   const width = ImageUtils.canvasWidth(aspectRatio);
@@ -124,7 +146,6 @@ export async function processSduiCarouselJob(
     maxSlides,
   );
 
-  const preferEditorial = LayoutProcessor.promptRequestsEditorial(jobRow.prompt);
   const contentTags = inputs.contentTags ?? [];
   const conversationContext = inputs.conversationContext ?? [];
   const layoutStyle = inputs.layoutStyle ?? 'auto';
@@ -140,7 +161,6 @@ export async function processSduiCarouselJob(
     defaultTone,
     textGuardrailOptions,
     signal,
-    preferEditorial,
     layoutStyle,
     imagePreference,
     contentTags,
@@ -177,14 +197,33 @@ export async function processSduiCarouselJob(
     return;
   }
 
+  // Text-only is a HARD user intent: the "poster" style group carries no
+  // image-capable variants (supportsAllSlidesImage=false), and an explicit
+  // "tanpa gambar / teks saja" in the prompt is unambiguous. Either one
+  // forces every slide off the photo/collage path — the planner only
+  // "prioritizes" a style, so we enforce it deterministically here.
+  const styleGroup = layoutStyleGroupById(layoutStyle);
+  const forceTextOnly =
+    (styleGroup !== undefined && styleGroup.supportsAllSlidesImage === false) ||
+    (promptExplicitlyRequestsNoImages(jobRow.prompt) && imagePreference !== 'all_slides_image');
+
+  if (forceTextOnly) {
+    slides = slides.map((slide) => coerceTextOnlySlide(slide));
+  }
+
   // -------------------------------------------------------------------------
   // Phase 2: Ensure explicit image requests are honored
   // -------------------------------------------------------------------------
-  slides = ensureExplicitImageRequest(jobRow.prompt, slides).map((slide) =>
-    applySduiTextGuardrails(slide, textGuardrailOptions),
-  );
+  if (!forceTextOnly) {
+    slides = ensureExplicitImageRequest(jobRow.prompt, slides).map((slide) =>
+      applySduiTextGuardrails(slide, textGuardrailOptions),
+    );
+  } else {
+    slides = slides.map((slide) => applySduiTextGuardrails(slide, textGuardrailOptions));
+  }
 
   if (
+    !forceTextOnly &&
     promptExplicitlyRequestsImages(jobRow.prompt) &&
     SlideRepair.visualIntegrityIssues(jobRow.prompt, slides).length > 0
   ) {
@@ -209,7 +248,6 @@ export async function processSduiCarouselJob(
         conversationContext,
         layoutStyle,
         imagePreference,
-        ...(preferEditorial ? { editorialBias: true } : {}),
       },
       signal,
     );
@@ -247,7 +285,11 @@ export async function processSduiCarouselJob(
   // -------------------------------------------------------------------------
   // Phase 3: Enforce layout diversity
   // -------------------------------------------------------------------------
-  slides = LayoutProcessor.enforceLayoutDiversity(slides, { preferEditorial }).map((slide) =>
+  // A frontend draft carries the user's explicit per-slide layout choices
+  // (picked in the visual preview) — honor them instead of reshuffling for
+  // diversity. AI/fallback decks still get the full diversity pass.
+  const respectExplicitVariants = acquisitionResult.source === 'frontend_draft';
+  slides = LayoutProcessor.enforceLayoutDiversity(slides, { respectExplicitVariants }).map((slide) =>
     applySduiTextGuardrails(slide, textGuardrailOptions),
   );
 
@@ -283,16 +325,22 @@ export async function processSduiCarouselJob(
     deps.imageClient,
   );
 
-  // Handle required image failures
+  // Graceful degrade for REQUIRED image failures: instead of failing the
+  // whole job (one dead provider used to kill the deck), route the affected
+  // slides through the same no-image repair used for optional failures and
+  // surface a warning. The deck always ships.
   if (imageGenResult.requiredImageFailedSlideNumbers.size > 0) {
-    await failJobForRequiredImageFailures(
-      deps.slideRepo,
-      { teamId, jobId },
-      slides,
-      imageGenResult.requiredImageFailedSlideNumbers,
+    for (const slideNumber of imageGenResult.requiredImageFailedSlideNumbers) {
+      imageGenResult.failedImageSlideNumbers.add(slideNumber);
+      plannerQualityWarnings.push(
+        `image_degraded: slide ${slideNumber} gagal generate gambar — layout diturunkan ke poster tanpa gambar`,
+      );
+    }
+    slides = slides.map((slide) =>
+      imageGenResult.requiredImageFailedSlideNumbers.has(slide.slide_number)
+        ? { ...slide, image_requirement: 'optional' as const }
+        : slide,
     );
-    await deps.jobRepo.setStatus(teamId, jobId, 'failed', 'provider_error');
-    return;
   }
 
   // Stamp image_status for slides without images
@@ -314,7 +362,6 @@ export async function processSduiCarouselJob(
       defaultTone,
       textGuardrailOptions,
       signal,
-      preferEditorial,
       layoutStyle,
       imagePreference,
       contentTags,
@@ -418,12 +465,26 @@ export function createSduiCarouselWorker(
   return new Worker<ContentGenerationJobPayload>(
     CONTENT_GENERATION_QUEUE_NAME,
     async (job: Job<ContentGenerationJobPayload>) => {
-      await processSduiCarouselJob(deps, job.data, new AbortController().signal);
+      try {
+        await processSduiCarouselJob(deps, job.data, new AbortController().signal);
+      } catch (error) {
+        // Pipeline phases record their own terminal status; this catch covers
+        // anything uncaught (renderer crash, network error, missing job row)
+        // so the DB row never sits `pending` forever.
+        console.error('[carousel-worker] uncaught pipeline error', {
+          jobId: job.data.jobId,
+          teamId: job.data.teamId,
+          error,
+        });
+        await deps.jobRepo
+          .setStatus(job.data.teamId, job.data.jobId, 'failed', 'provider_error')
+          .catch(() => {});
+      }
     },
     {
       connection: connectionOptions,
       concurrency: 2,
-      lockDuration: 600_000, // 10 minutes (was 30s default)
+      lockDuration: CONTENT_JOB_MAX_RUNTIME_MS, // 10 minutes (was 30s default)
     },
   );
 }

@@ -18,7 +18,11 @@ import type { SduiCarouselWorkerDeps } from '../../sdui-carousel-worker.js';
 import type { SduiPlanner } from '../../sdui-planner/index.js';
 import { applySduiTextGuardrails, sduiContentQualityIssues, sduiTextFitIssues } from '../../sdui-text-guardrails.js';
 import type { SduiTextGuardrailOptions } from '../../sdui-text-guardrails.js';
-import { promptExplicitlyRequestsImages, promptRequestsVisualLedDeck } from '../../sdui-planner/index.js';
+import {
+  promptExplicitlyRequestsImages,
+  promptExplicitlyRequestsNoImages,
+  promptRequestsVisualLedDeck,
+} from '../../sdui-planner/index.js';
 import { SlideEnrichment } from './slide-enrichment.js';
 import { LayoutProcessor } from './layout-processor.js';
 import { SlideQualityValidator } from '../validators/slide-quality-validator.js';
@@ -36,7 +40,6 @@ export interface RepairContext {
   defaultTone: string;
   textGuardrailOptions: SduiTextGuardrailOptions;
   signal: AbortSignal;
-  preferEditorial: boolean;
   layoutStyle: LayoutStylePreference;
   imagePreference: ImagePreferenceMode;
   contentTags: string[];
@@ -54,6 +57,9 @@ function uniqueIssues(issues: string[]): string[] {
  * Calculates required visual slide count based on prompt analysis
  */
 function requiredVisualSlideCount(prompt: string, slideCount: number): number {
+  // "tanpa gambar / teks saja" wins: the word "gambar" in a negation must not
+  // trip the image-required heuristic and re-add photos to a text-only deck.
+  if (promptExplicitlyRequestsNoImages(prompt)) return 0;
   if (!promptRequestsVisualLedDeck(prompt)) return promptExplicitlyRequestsImages(prompt) ? 1 : 0;
   if (slideCount >= 5) return 3;
   if (slideCount >= 3) return 2;
@@ -89,7 +95,7 @@ function visualIntegrityIssues(prompt: string, slides: SduiSlide[]): string[] {
 function deterministicNoImageRepair(slide: SduiSlide, index: number): SduiSlide {
   const withoutImage = LayoutProcessor.removeImagePlaceholders(slide);
   const compatible = LayoutProcessor.compatibleVariants(withoutImage, index, true);
-  const preferred = compatible.find((variant) => variant !== slide.layout_variant_id) ?? compatible[0] ?? 'text_stack';
+  const preferred = compatible.find((variant) => variant !== slide.layout_variant_id) ?? compatible[0] ?? 'gw_poster_statement';
   return {
     ...LayoutProcessor.applyLayoutFields(withoutImage, preferred, 'ai_repaired_after_image_failure'),
     image_requirement: 'none',
@@ -117,7 +123,6 @@ async function repairSlidesForQuality(
     issues: string[];
     textGuardrailOptions: SduiTextGuardrailOptions;
     signal: AbortSignal;
-    editorialBias?: boolean;
     layoutStyle?: LayoutStylePreference;
     imagePreference?: ImagePreferenceMode;
     contentTags: string[];
@@ -138,7 +143,6 @@ async function repairSlidesForQuality(
     .map((slide) => applySduiTextGuardrails(slide, params.textGuardrailOptions));
 
   const layoutRepairedSlides = LayoutProcessor.enforceLayoutDiversity(deterministicSlides, {
-    preferEditorial: params.editorialBias ?? false,
   }).map((slide) => applySduiTextGuardrails(slide, params.textGuardrailOptions));
 
   const deterministicIssues = uniqueIssues([
@@ -175,7 +179,6 @@ async function repairSlidesForQuality(
       conversationContext: params.conversationContext,
       layoutStyle: params.layoutStyle,
       imagePreference: params.imagePreference,
-      ...(params.editorialBias ? { editorialBias: true } : {}),
     },
     params.signal,
   );
@@ -220,7 +223,6 @@ async function repairFailedOptionalImages(
     defaultTone,
     textGuardrailOptions,
     signal,
-    preferEditorial,
     layoutStyle,
     imagePreference,
     contentTags,
@@ -248,7 +250,6 @@ async function repairFailedOptionalImages(
       conversationContext,
       layoutStyle,
       imagePreference,
-      ...(preferEditorial ? { editorialBias: true } : {}),
     },
     signal,
   );
@@ -287,7 +288,6 @@ async function repairFailedOptionalImages(
   // Phase 2: Re-enforce layout diversity + final guardrails
   next = LayoutProcessor.enforceLayoutDiversity(next, {
     forceNoImageSlideNumbers: failedImageSlideNumbers,
-    preferEditorial,
   }).map((slide) => applySduiTextGuardrails(slide, textGuardrailOptions));
 
   // Phase 3: Stamp repaired metadata

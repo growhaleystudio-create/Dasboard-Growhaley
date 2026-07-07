@@ -21,7 +21,7 @@ function canvasWidth(aspectRatio: AspectRatio): number {
  * Cover-full layouts match canvas aspect, others use 1:1.
  */
 function imagePlaceholderAspectRatio(slide: SduiSlide, canvasAspectRatio: AspectRatio): AspectRatio {
-  return slide.layout_variant_id === 'cover_image_full' ? canvasAspectRatio : '1:1';
+  return slide.layout_variant_id?.startsWith('gw_photo_') || slide.layout_variant_id === 'gw_collage_showcase' ? canvasAspectRatio : '1:1';
 }
 
 /**
@@ -29,7 +29,7 @@ function imagePlaceholderAspectRatio(slide: SduiSlide, canvasAspectRatio: Aspect
  * Some layouts require specific aspect ratios for optimal display.
  */
 function generatedImageAspectRatio(slide: SduiSlide, canvasAspectRatio: AspectRatio): AspectRatio {
-  if (slide.layout_variant_id === 'cover_image_full') return canvasAspectRatio;
+  if (slide.layout_variant_id?.startsWith('gw_photo_')) return canvasAspectRatio;
   
   // Multi-image layouts need specific aspect ratios
   if (

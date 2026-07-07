@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { cn } from '@/lib/utils';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -7,9 +8,10 @@ export interface ModalProps {
   title: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'drawer';
 }
 
-export function Modal({ isOpen, onClose, title, children, footer }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, footer, size = 'md' }: ModalProps) {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -26,20 +28,43 @@ export function Modal({ isOpen, onClose, title, children, footer }: ModalProps) 
 
   if (!isOpen) return null;
 
+  const isDrawer = size === 'drawer';
+
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-4">
+    <div
+      className={cn(
+        "fixed inset-0 z-50 flex p-3 transition-all",
+        isDrawer 
+          ? "justify-end items-stretch p-0" 
+          : "items-end justify-center sm:items-center sm:p-4"
+      )}
+    >
       {/* Overlay */}
       <div 
         className="absolute inset-0 bg-text-strong-950/20 backdrop-blur-sm transition-opacity" 
         onClick={onClose}
       />
       
-      {/* Modal Card */}
-      <div className="relative flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-panel bg-bg-white-0 shadow-card animate-in fade-in zoom-in-95 duration-200">
+      {/* Modal Card / Drawer Sheet */}
+      <div
+        className={cn(
+          "relative flex flex-col overflow-hidden bg-bg-white-0 shadow-panel transition-all",
+          isDrawer
+            ? "h-full max-h-screen w-full max-w-lg sm:max-w-xl rounded-none sm:rounded-l-panel animate-in fade-in slide-in-from-right duration-300"
+            : cn(
+                "max-h-[92dvh] w-full rounded-panel animate-in fade-in zoom-in-95 duration-200",
+                size === 'sm' && "max-w-sm",
+                size === 'md' && "max-w-lg",
+                size === 'lg' && "max-w-2xl",
+                size === 'xl' && "max-w-4xl",
+                size === 'full' && "max-w-full m-3 sm:m-4"
+              )
+        )}
+      >
         
         {/* Header */}
         <div className="flex items-center justify-between border-b border-stroke-soft-200 px-4 py-4 sm:px-6">
-          <h2 className="font-inter font-semibold text-[18px] text-text-strong-950 tracking-tight">
+          <h2 className="font-sans text-[18px] font-bold leading-[1.3] tracking-[-0.01em] text-text-strong-950">
             {title}
           </h2>
           <button 
@@ -53,7 +78,7 @@ export function Modal({ isOpen, onClose, title, children, footer }: ModalProps) 
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto px-4 py-4 text-sm font-inter text-text-sub-600 sm:px-6">
+        <div className="overflow-y-auto flex-1 px-4 py-4 font-sans text-[14px] leading-[1.45] text-text-sub-600 sm:px-6">
           {children}
         </div>
 

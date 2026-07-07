@@ -5,15 +5,18 @@ import { withTransaction } from '../db/transaction.js';
 
 import type { TeamAiSettingsService } from '../auth/team-ai-settings-service.js';
 import type { AiBudgetTracker } from './ai-budget-tracker.js';
-import { type AiProvider, AiProviderError } from './gemini-client.js';
+import { type AiProvider, AiProviderError } from './ai-text-provider-client.js';
 import { buildPublicLeadSnapshot, type SnapshotSourceLead } from './public-lead-snapshot.js';
 
 import type { LeadRepository } from '../repository/lead-repository.js';
+import type { LeadScoringBreakdownRepository } from '../repository/lead-scoring-breakdown-repository.js';
+import {
+  LeadWebsiteAuditRepository,
+  cachedFromLighthouse,
+} from '../repository/lead-website-audit-repository.js';
+import type { LeadOpportunityScorer } from '../scoring/service/lead-opportunity-scorer.js';
 import type { AuditLog } from '../privacy/audit-log.js';
-import type { ScoringModelRepository } from '../repository/scoring-model-repository.js';
-import { computeScore } from '../scoring/compute-score.js';
-import { ScoreContributionRepository } from '../scoring/score-contribution-repository.js';
-import type { ScorableProjector } from '../scoring/recompute.js';
+import { inferSourceFromProfileUrl, isBusinessWebsiteUrl } from '../url/business-website.js';
 import { LighthouseWebsiteAuditor, type WebsiteAuditor } from './lighthouse-website-auditor.js';
 
 export interface AiAnalyzeResult {
@@ -27,20 +30,21 @@ export interface AiAnalyzeResult {
 export interface AiAnalyzerServiceDeps {
   pool?: Pool;
   runInTx?: <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>;
-  
+
   settings: TeamAiSettingsService;
   budget: AiBudgetTracker;
   providerFactory: (apiKey: string, apiBaseUrl: string, model: string) => AiProvider;
-  
+
   leads: Pick<LeadRepository, 'findById'>;
+  breakdowns?: Pick<LeadScoringBreakdownRepository, 'findForLead'>;
   audit: Pick<AuditLog, 'recordTx'>;
-  models: Pick<ScoringModelRepository, 'getForTeam'>;
-  
-  txLeads?: (tx: Tx) => Pick<LeadRepository, 'setAiResult' | 'setScore'>;
-  txContributions?: (tx: Tx) => Pick<ScoreContributionRepository, 'replaceForLead'>;
+
+  txLeads?: (tx: Tx) => Pick<LeadRepository, 'setAiResult' | 'applyAttributePatch'>;
   websiteAuditor?: WebsiteAuditor;
-  
-  projectScorable: ScorableProjector;
+  /** Persists the Lighthouse audit so the scorer reuses it (no second run). */
+  websiteAudits?: (tx: Tx) => Pick<LeadWebsiteAuditRepository, 'upsertForLead'>;
+  /** Rescored after analysis so the lead score reflects the fresh audit. */
+  scorer?: Pick<LeadOpportunityScorer, 'recomputeLead'>;
 }
 
 export class AiAnalyzerService {
@@ -85,7 +89,7 @@ export class AiAnalyzerService {
     // If we wanted postSnippet, we'd have needed to store it or fetch it again. 
     // R13.7 allows it if we had it, but Lead doesn't store it, so we omit.
     const snapshotFields: SnapshotSourceLead = { matchedKeywords: lead.matchedKeywords };
-    const source = lead.acquiredSource ?? inferSourceFromUrl(lead.profileUrl);
+    const source = lead.acquiredSource ?? inferSourceFromProfileUrl(lead.profileUrl);
     if (source) snapshotFields.source = source;
     if (lead.name) snapshotFields.name = lead.name;
     if (lead.publicContact) snapshotFields.publicContact = lead.publicContact;
@@ -96,9 +100,44 @@ export class AiAnalyzerService {
       ? await (this.deps.websiteAuditor ?? new LighthouseWebsiteAuditor()).audit(lead.profileUrl)
       : undefined;
 
+    const scoringBreakdown = this.deps.breakdowns
+      ? await this.deps.breakdowns.findForLead(teamId, leadId)
+      : null;
+
+    const businessProfile = lead.auditAttributes
+      ? {
+          ...(lead.auditAttributes.rating !== undefined
+            ? { rating: lead.auditAttributes.rating }
+            : {}),
+          ...(lead.auditAttributes.reviewCount !== undefined
+            ? { reviewCount: lead.auditAttributes.reviewCount }
+            : {}),
+          ...(lead.auditAttributes.category !== undefined
+            ? { category: lead.auditAttributes.category }
+            : {}),
+        }
+      : undefined;
+
     const snapshot = buildPublicLeadSnapshot(snapshotFields, {
+      ...(businessProfile && Object.keys(businessProfile).length > 0 ? { businessProfile } : {}),
       ...(websiteAudit !== undefined ? { websiteAudit } : {}),
+      ...(scoringBreakdown !== null
+        ? {
+            scoringBreakdown: {
+              businessValueScore: scoringBreakdown.businessValueScore,
+              websiteNeedScore: scoringBreakdown.websiteNeedScore,
+              reachabilityScore: scoringBreakdown.reachabilityScore,
+              confidenceScore: scoringBreakdown.confidenceScore,
+              confidenceModifier: scoringBreakdown.confidenceModifier,
+              baseScore: scoringBreakdown.baseScore,
+              finalScore: scoringBreakdown.finalScore,
+              hasWebsite: scoringBreakdown.hasWebsite,
+              scoringVersion: scoringBreakdown.scoringVersion,
+            },
+          }
+        : {}),
     });
+
 
     const provider = this.deps.providerFactory(apiKey, apiBaseUrl, settings.textModel);
     
@@ -106,14 +145,31 @@ export class AiAnalyzerService {
       const result = await provider.analyze(snapshot);
       
       // Success path
-      return await runInTx(async (tx) => {
+      const analyzeResult = await runInTx(async (tx): Promise<AiAnalyzeResult> => {
         // Late bind to avoid circular dependency in tests if missing
-        const txLeads = this.deps.txLeads 
-          ? this.deps.txLeads(tx) 
+        const txLeads = this.deps.txLeads
+          ? this.deps.txLeads(tx)
           : new (await import('../repository/lead-repository.js')).LeadRepository(tx);
-          
-        await txLeads.setAiResult(teamId, leadId, result.intentScore, result.insight, 'success');
-        
+
+        await txLeads.setAiResult(teamId, leadId, null, result.insight, 'success');
+
+        // Cache the Lighthouse audit so the scorer reuses it (no second run)
+        // and the score's SEO/UX/Performance match what AI analysis saw.
+        if (websiteAudit && websiteAudit.status !== 'not_applicable_no_website') {
+          const makeAudits =
+            this.deps.websiteAudits ?? ((t: Tx) => new LeadWebsiteAuditRepository(t));
+          await makeAudits(tx).upsertForLead(
+            cachedFromLighthouse(teamId, leadId, websiteAudit, new Date()),
+          );
+        }
+
+        if (websiteAudit?.whatsappUrl || websiteAudit?.whatsappNumber) {
+          await txLeads.applyAttributePatch(teamId, leadId, {
+            ...(websiteAudit.whatsappUrl ? { whatsappUrl: websiteAudit.whatsappUrl } : {}),
+            ...(websiteAudit.whatsappNumber ? { whatsappNumber: websiteAudit.whatsappNumber } : {}),
+          });
+        }
+
         await this.deps.budget.recordCall(tx, {
           teamId,
           leadId,
@@ -123,41 +179,41 @@ export class AiAnalyzerService {
           outputTokens: result.tokenUsage.outputTokens,
           totalTokens: result.tokenUsage.totalTokens,
         });
-        
+
         await this.deps.audit.recordTx(tx, {
           teamId,
           actorId,
           action: 'ai_call',
           objectType: 'lead',
           objectId: leadId,
-        metadata: { trigger, outcome: 'success', tokenUsage: result.tokenUsage }
+          metadata: {
+            trigger,
+            outcome: 'success',
+            tokenUsage: result.tokenUsage,
+            mode: 'explainer_only',
+          },
         });
-        
-        // Recompute score inline if model exists
-        const model = await this.deps.models.getForTeam(teamId);
-        if (model && model.factors.length > 0) {
-          const scorable = await this.deps.projectScorable(leadId);
-          if (scorable) {
-            scorable.aiIntentScore = result.intentScore; 
-            const scoreResult = computeScore(scorable, model.factors);
-            if (scoreResult.state === 'scored' && scoreResult.score !== null) {
-              await txLeads.setScore(teamId, leadId, scoreResult.score, 'scored');
-              const txContributions = this.deps.txContributions
-                ? this.deps.txContributions(tx)
-                : new ScoreContributionRepository();
-              await txContributions.replaceForLead(tx, leadId, model.version, scoreResult.contributions);
-            }
-          }
-        }
-        
+
         return {
           leadId,
           aiState: 'success',
-          aiIntentScore: result.intentScore,
-          aiInsight: result.insight
+          aiIntentScore: null,
+          aiInsight: result.insight,
         };
       });
-      
+
+      // Rescore now that the Lighthouse audit is cached — best-effort so a
+      // scoring hiccup never fails an otherwise-successful AI analysis.
+      if (this.deps.scorer) {
+        try {
+          await this.deps.scorer.recomputeLead(teamId, leadId);
+        } catch (scoreError) {
+          console.error(`Rescore after AI analysis failed for lead ${leadId}:`, scoreError);
+        }
+      }
+
+      return analyzeResult;
+
     } catch (e: unknown) {
       // Handle known failure reasons
       let reason: AIUnavailableReason = 'provider_error';
@@ -211,19 +267,3 @@ export class AiAnalyzerService {
   }
 }
 
-function isBusinessWebsiteUrl(value: string): boolean {
-  return !(
-    /^https?:\/\/(?:www\.)?openstreetmap\.org\//i.test(value) ||
-    /instagram\.com|facebook\.com|fb\.com|threads\.net|linkedin\.com/i.test(value)
-  );
-}
-
-function inferSourceFromUrl(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  if (/instagram\.com/i.test(value)) return 'instagram';
-  if (/facebook\.com|fb\.com/i.test(value)) return 'facebook';
-  if (/threads\.net/i.test(value)) return 'threads';
-  if (/linkedin\.com/i.test(value)) return 'linkedin';
-  if (/openstreetmap\.org/i.test(value)) return 'openstreetmap';
-  return undefined;
-}

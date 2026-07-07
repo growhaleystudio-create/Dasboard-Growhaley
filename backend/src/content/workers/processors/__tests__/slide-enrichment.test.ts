@@ -294,7 +294,7 @@ describe('SlideEnrichment', () => {
       const result = SlideEnrichment.enrichSparseSlide(slide, 2, 'prompt');
       const header = result.nested_groups.core_content!.find((c) => c.type === 'header');
       expect(header).toBeDefined();
-      expect(header!.text).toContain('Poin 3'); // index 2 → display as 3
+      expect(header!.text).toContain('Some body text'); // uses existing body preview before numeric fallback
     });
 
     it('should not add header for cover slides', () => {
@@ -394,7 +394,7 @@ describe('SlideEnrichment', () => {
 
     it('should add checklist for checklist layout family', () => {
       const slide = createTestSlide({
-        layout_variant_id: 'checklist_stack',
+        layout_variant_id: 'gw_poster_list',
         nested_groups: {
           top_meta: [],
           core_content: [{ type: 'header', text: 'Title' }],
@@ -408,7 +408,7 @@ describe('SlideEnrichment', () => {
 
     it('should add quote for quote layout family', () => {
       const slide = createTestSlide({
-        layout_variant_id: 'quote_focus',
+        layout_variant_id: 'gw_poster_quote',
         nested_groups: {
           top_meta: [],
           core_content: [{ type: 'header', text: 'Quote slide' }],
@@ -422,7 +422,7 @@ describe('SlideEnrichment', () => {
 
     it('should add CTA button for cta layout family', () => {
       const slide = createTestSlide({
-        layout_variant_id: 'cta_centered',
+        layout_variant_id: 'gw_poster_cta',
         nested_groups: {
           top_meta: [],
           core_content: [{ type: 'header', text: 'Call to action' }],
@@ -470,7 +470,7 @@ describe('SlideEnrichment', () => {
 
     it('should add checklist for checklist family', () => {
       const slide = createTestSlide({
-        layout_variant_id: 'checklist_stack',
+        layout_variant_id: 'gw_poster_list',
         nested_groups: {
           top_meta: [],
           core_content: [{ type: 'header', text: 'List' }],
@@ -490,7 +490,7 @@ describe('SlideEnrichment', () => {
 
     it('should set image_requirement to none for image layouts without placeholder', () => {
       const slide = createTestSlide({
-        layout_variant_id: 'split_text_left_image_right',
+        layout_variant_id: 'gw_photo_statement',
         image_requirement: 'optional',
         nested_groups: {
           top_meta: [],

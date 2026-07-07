@@ -1,0 +1,422 @@
+{
+  "jobId": "a4cd88d9-a13d-4018-93cb-22877b68c3c3",
+  "status": "success",
+  "layoutAudit": [
+    {
+      "image_status": "generated",
+      "slide_number": 1,
+      "layout_family": "text",
+      "layout_source": "worker_adjusted",
+      "image_requirement": "required",
+      "layout_variant_id": "cover_centered"
+    },
+    {
+      "image_status": "generated",
+      "slide_number": 2,
+      "layout_family": "text",
+      "layout_source": "worker_adjusted",
+      "image_requirement": "required",
+      "layout_variant_id": "stat_highlight"
+    },
+    {
+      "image_status": "not_needed",
+      "slide_number": 3,
+      "layout_family": "text",
+      "layout_source": "worker_adjusted",
+      "image_requirement": "none",
+      "layout_variant_id": "feature_cards_with_header"
+    },
+    {
+      "image_status": "not_needed",
+      "slide_number": 4,
+      "layout_family": "text",
+      "layout_source": "worker_adjusted",
+      "image_requirement": "none",
+      "layout_variant_id": "header_body_cta"
+    }
+  ],
+  "workflow": {
+    "slides": [
+      {
+        "sduiSlide": {
+          "slide_type": "cover",
+          "image_status": "generated",
+          "slide_number": 1,
+          "layout_family": "text",
+          "layout_source": "worker_adjusted",
+          "nested_groups": {
+            "top_meta": [
+              {
+                "text": "AI",
+                "type": "tag",
+                "textTransform": "uppercase"
+              }
+            ],
+            "core_content": [
+              {
+                "text": "AI Automation",
+                "type": "header",
+                "highlight": "AI Automation"
+              },
+              {
+                "text": "Temukan bagaimana teknologi cerdas memberdayakan bisnis kecil.",
+                "type": "body"
+              },
+              {
+                "type": "image_placeholder",
+                "requires_generation": true,
+                "image_object_context": "Abstract, futuristic visualization of AI automation enhancing a small business, perhaps with glowing data streams connecting various business functions. The style should be professional yet accessible, conveying efficiency and growth."
+              }
+            ],
+            "action_footer": [
+              {
+                "type": "button_cta",
+                "label": "Pelajari Selengkapnya",
+                "style": "primary"
+              }
+            ]
+          },
+          "container_layout": "text_dominant",
+          "contentDirection": "column",
+          "typography_scale": "balanced_classic",
+          "image_requirement": "required",
+          "layout_variant_id": "cover_centered"
+        },
+        "reviewStatus": "draft",
+        "slide_number": 1,
+        "renderedImageUrl": "https://ioqazptafolroxwgkera.supabase.co/storage/v1/object/public/content-assets/11365b70-5e56-4d74-9adf-bdce6d14c10c/jobs/a4cd88d9-a13d-4018-93cb-22877b68c3c3/slide-0.png"
+      },
+      {
+        "sduiSlide": {
+          "slide_type": "content",
+          "image_status": "generated",
+          "slide_number": 2,
+          "layout_family": "text",
+          "layout_source": "worker_adjusted",
+          "nested_groups": {
+            "top_meta": [
+              {
+                "text": "UMKM",
+                "type": "tag",
+                "textTransform": "uppercase"
+              }
+            ],
+            "core_content": [
+              {
+                "type": "image_placeholder",
+                "requires_generation": true,
+                "image_object_context": "Illustration of a diverse small business owner looking empowered while interacting with an automated system on a tablet. The system shows simplified charts for sales and customer service. Clean, modern, and optimistic visual style."
+              },
+              {
+                "text": "Tingkatkan Efisiensi",
+                "type": "header"
+              },
+              {
+                "text": "Automasi tugas rutin seperti entri data, penjadwalan, dan layanan pelanggan dasar.",
+                "type": "body"
+              }
+            ],
+            "action_footer": []
+          },
+          "container_layout": "text_dominant",
+          "contentDirection": "column",
+          "typography_scale": "balanced_classic",
+          "image_requirement": "required",
+          "layout_variant_id": "stat_highlight"
+        },
+        "reviewStatus": "draft",
+        "slide_number": 2,
+        "renderedImageUrl": "https://ioqazptafolroxwgkera.supabase.co/storage/v1/object/public/content-assets/11365b70-5e56-4d74-9adf-bdce6d14c10c/jobs/a4cd88d9-a13d-4018-93cb-22877b68c3c3/slide-1.png"
+      },
+      {
+        "sduiSlide": {
+          "slide_type": "content",
+          "image_status": "not_needed",
+          "slide_number": 3,
+          "layout_family": "text",
+          "layout_source": "worker_adjusted",
+          "nested_groups": {
+            "top_meta": [
+              {
+                "text": "AUTOMATION",
+                "type": "tag",
+                "textTransform": "uppercase"
+              }
+            ],
+            "core_content": [
+              {
+                "text": "Manfaat Nyata AI untuk Bisnis Anda",
+                "type": "header",
+                "highlight": "Manfaat Nyata"
+              },
+              {
+                "type": "feature_cards",
+                "items_cards": [
+                  {
+                    "icon": "🚀",
+                    "title": "Pertumbuhan Penjualan",
+                    "description": "Analisis prediktif identifikasi peluang pasar."
+                  },
+                  {
+                    "icon": "💡",
+                    "title": "Inovasi Produk",
+                    "description": "Wawasan pelanggan percepat pengembangan solusi."
+                  },
+                  {
+                    "icon": "💰",
+                    "title": "Pengurangan Biaya",
+                    "description": "Otomatisasi alur kerja minimalkan pemborosan."
+                  },
+                  {
+                    "icon": "👥",
+                    "title": "Kepuasan Pelanggan",
+                    "description": "Respon cepat dan personalisasi layanan."
+                  }
+                ]
+              },
+              {
+                "text": "Manfaat Nyata AI untuk Bisnis Anda: ringkas poin utama tentang Buat carousel Instagram 4 slide tentang manfaat automasi AI untuk UMKM.",
+                "type": "body"
+              }
+            ],
+            "action_footer": []
+          },
+          "container_layout": "text_dominant",
+          "contentDirection": "column",
+          "typography_scale": "information_dense",
+          "image_requirement": "none",
+          "layout_variant_id": "feature_cards_with_header"
+        },
+        "reviewStatus": "draft",
+        "slide_number": 3,
+        "renderedImageUrl": "https://ioqazptafolroxwgkera.supabase.co/storage/v1/object/public/content-assets/11365b70-5e56-4d74-9adf-bdce6d14c10c/jobs/a4cd88d9-a13d-4018-93cb-22877b68c3c3/slide-2.png"
+      },
+      {
+        "sduiSlide": {
+          "slide_type": "content",
+          "image_status": "not_needed",
+          "slide_number": 4,
+          "layout_family": "text",
+          "layout_source": "worker_adjusted",
+          "nested_groups": {
+            "top_meta": [
+              {
+                "text": "AI",
+                "type": "tag",
+                "textTransform": "uppercase"
+              }
+            ],
+            "core_content": [
+              {
+                "text": "Siap Mengadopsi Otomatisasi AI?",
+                "type": "header",
+                "highlight": "Otomatisasi AI"
+              },
+              {
+                "text": "Langkah pertama menuju efisiensi dan inovasi ada di ujung jari Anda.",
+                "type": "body"
+              }
+            ],
+            "action_footer": [
+              {
+                "type": "button_cta",
+                "label": "Konsultasi Gratis",
+                "style": "primary"
+              }
+            ]
+          },
+          "container_layout": "text_dominant",
+          "contentDirection": "column",
+          "typography_scale": "balanced_classic",
+          "image_requirement": "none",
+          "layout_variant_id": "header_body_cta"
+        },
+        "reviewStatus": "draft",
+        "slide_number": 4,
+        "renderedImageUrl": "https://ioqazptafolroxwgkera.supabase.co/storage/v1/object/public/content-assets/11365b70-5e56-4d74-9adf-bdce6d14c10c/jobs/a4cd88d9-a13d-4018-93cb-22877b68c3c3/slide-3.png"
+      }
+    ],
+    "source": "auto",
+    "caption": {
+      "cta": "Konsultasi Gratis",
+      "body": "Tingkatkan Efisiensi: Automasi tugas rutin seperti entri data, penjadwalan, dan layanan pelanggan dasar.\n\nManfaat Nyata AI untuk Bisnis Anda: Manfaat Nyata AI untuk Bisnis Anda: ringkas poin utama tentang Buat carousel Instagram 4 slide tentang manfaat automasi AI untuk UMKM.",
+      "hook": "AI Automation",
+      "hashtags": [
+        "#carousel",
+        "#konten",
+        "#branding"
+      ]
+    },
+    "outline": [
+      {
+        "cta": "Pelajari Selengkapnya",
+        "body": "Temukan bagaimana teknologi cerdas memberdayakan bisnis kecil.",
+        "role": "cover",
+        "headline": "AI Automation",
+        "visualBrief": "Abstract, futuristic visualization of AI automation enhancing a small business, perhaps with glowing data streams connecting various business functions. The style should be professional yet accessible, conveying efficiency and growth.",
+        "slide_number": 1
+      },
+      {
+        "body": "Automasi tugas rutin seperti entri data, penjadwalan, dan layanan pelanggan dasar.",
+        "role": "content",
+        "headline": "Tingkatkan Efisiensi",
+        "visualBrief": "Illustration of a diverse small business owner looking empowered while interacting with an automated system on a tablet. The system shows simplified charts for sales and customer service. Clean, modern, and optimistic visual style.",
+        "slide_number": 2
+      },
+      {
+        "body": "Manfaat Nyata AI untuk Bisnis Anda: ringkas poin utama tentang Buat carousel Instagram 4 slide tentang manfaat automasi AI untuk UMKM.",
+        "role": "content",
+        "headline": "Manfaat Nyata AI untuk Bisnis Anda",
+        "slide_number": 3
+      },
+      {
+        "cta": "Konsultasi Gratis",
+        "body": "Langkah pertama menuju efisiensi dan inovasi ada di ujung jari Anda.",
+        "role": "cta",
+        "headline": "Siap Mengadopsi Otomatisasi AI?",
+        "slide_number": 4
+      }
+    ],
+    "version": 1,
+    "createdAt": "2026-06-15T08:11:42.159Z",
+    "updatedAt": "2026-06-15T08:12:07.007Z",
+    "slidePrompts": [
+      {
+        "prompt": "Create one Instagram carousel slide visual asset for the existing renderer. Slide: 1 of 4. Type: cover. Topic: Buat carousel Instagram 4 slide tentang manfaat automasi AI untuk UMKM, tone profesional tapi mudah dipahami, sertakan minimal 1 slide visual ilustratif.. Exact headline text rendered separately: \"AI Automation\". Exact body text rendered separately: \"Temukan bagaimana teknologi cerdas memberdayakan bisnis kecil.\". Visual: Abstract, futuristic visualization of AI automation enhancing a small business, perhaps with glowing data streams connecting various business functions. The style should be professional yet accessible, conveying efficiency and growth.. Do not render text inside the generated image. No words, letters, numbers, watermark, or logo.",
+        "exactBody": "Temukan bagaimana teknologi cerdas memberdayakan bisnis kecil.",
+        "visualBrief": "Abstract, futuristic visualization of AI automation enhancing a small business, perhaps with glowing data streams connecting various business functions. The style should be professional yet accessible, conveying efficiency and growth.",
+        "slide_number": 1,
+        "exactHeadline": "AI Automation"
+      },
+      {
+        "prompt": "Create one Instagram carousel slide visual asset for the existing renderer. Slide: 2 of 4. Type: content. Topic: Buat carousel Instagram 4 slide tentang manfaat automasi AI untuk UMKM, tone profesional tapi mudah dipahami, sertakan minimal 1 slide visual ilustratif.. Exact headline text rendered separately: \"Tingkatkan Efisiensi\". Exact body text rendered separately: \"Automasi tugas rutin seperti entri data, penjadwalan, dan layanan pelanggan dasar.\". Visual: Illustration of a diverse small business owner looking empowered while interacting with an automated system on a tablet. The system shows simplified charts for sales and customer service. Clean, modern, and optimistic visual style.. Do not render text inside the generated image. No words, letters, numbers, watermark, or logo.",
+        "exactBody": "Automasi tugas rutin seperti entri data, penjadwalan, dan layanan pelanggan dasar.",
+        "visualBrief": "Illustration of a diverse small business owner looking empowered while interacting with an automated system on a tablet. The system shows simplified charts for sales and customer service. Clean, modern, and optimistic visual style.",
+        "slide_number": 2,
+        "exactHeadline": "Tingkatkan Efisiensi"
+      },
+      {
+        "prompt": "Create one Instagram carousel slide visual asset for the existing renderer. Slide: 3 of 4. Type: content. Topic: Buat carousel Instagram 4 slide tentang manfaat automasi AI untuk UMKM, tone profesional tapi mudah dipahami, sertakan minimal 1 slide visual ilustratif.. Exact headline text rendered separately: \"Manfaat Nyata AI untuk Bisnis Anda\". Exact body text rendered separately: \"Manfaat Nyata AI untuk Bisnis Anda: ringkas poin utama tentang Buat carousel Instagram 4 slide tentang manfaat automasi AI untuk UMKM.\". Visual: no generated image needed; typography/layout carries this slide. Do not render text inside the generated image. No words, letters, numbers, watermark, or logo.",
+        "exactBody": "Manfaat Nyata AI untuk Bisnis Anda: ringkas poin utama tentang Buat carousel Instagram 4 slide tentang manfaat automasi AI untuk UMKM.",
+        "slide_number": 3,
+        "exactHeadline": "Manfaat Nyata AI untuk Bisnis Anda"
+      },
+      {
+        "prompt": "Create one Instagram carousel slide visual asset for the existing renderer. Slide: 4 of 4. Type: content. Topic: Buat carousel Instagram 4 slide tentang manfaat automasi AI untuk UMKM, tone profesional tapi mudah dipahami, sertakan minimal 1 slide visual ilustratif.. Exact headline text rendered separately: \"Siap Mengadopsi Otomatisasi AI?\". Exact body text rendered separately: \"Langkah pertama menuju efisiensi dan inovasi ada di ujung jari Anda.\". Visual: no generated image needed; typography/layout carries this slide. Do not render text inside the generated image. No words, letters, numbers, watermark, or logo.",
+        "exactBody": "Langkah pertama menuju efisiensi dan inovasi ada di ujung jari Anda.",
+        "slide_number": 4,
+        "exactHeadline": "Siap Mengadopsi Otomatisasi AI?"
+      }
+    ],
+    "workflowStage": "rendered",
+    "designSystemSnapshot": {
+      "fonts": [
+        "BebasNeue-Regular",
+        "PlusJakartaSans-Regular",
+        "PlusJakartaSans-SemiBold",
+        "PlusJakartaSans-Medium",
+        "PlusJakartaSans-ExtraBold",
+        "PlusJakartaSans-Light",
+        "PlusJakartaSans-ExtraLight"
+      ],
+      "chrome": {
+        "siteUrl": "",
+        "logoSizePx": 74,
+        "logoPlacement": "top-left",
+        "pageNumberFormat": "{current}/{total}"
+      },
+      "colors": [
+        "#187DB4",
+        "#0A0D14"
+      ],
+      "typography": {
+        "cta": {
+          "color": "#FFFFFF",
+          "sizePx": 20,
+          "fontFamily": "PlusJakartaSans-Medium"
+        },
+        "tag": {
+          "color": "#5b626e",
+          "sizePx": 16,
+          "fontFamily": "PlusJakartaSans-Regular"
+        },
+        "body": {
+          "color": "#5b626e",
+          "sizePx": 24,
+          "fontFamily": "PlusJakartaSans-Regular"
+        },
+        "card": {
+          "color": "#1a1d24",
+          "sizePx": 20,
+          "fontFamily": ""
+        },
+        "list": {
+          "color": "#5b626e",
+          "sizePx": 22,
+          "fontFamily": "PlusJakartaSans-Medium"
+        },
+        "stat": {
+          "color": "#1a1d24",
+          "sizePx": 52,
+          "fontFamily": ""
+        },
+        "cover": {
+          "color": "#1a1d24",
+          "sizePx": 72,
+          "fontFamily": "BebasNeue-Regular"
+        },
+        "quote": {
+          "color": "#1a1d24",
+          "sizePx": 44,
+          "fontFamily": "PlusJakartaSans-Regular"
+        },
+        "accent": "#187DB4",
+        "chrome": {
+          "color": "#5b626e",
+          "sizePx": 15,
+          "fontFamily": "PlusJakartaSans-Regular"
+        },
+        "header": {
+          "color": "#1a1d24",
+          "sizePx": 55,
+          "fontFamily": "BebasNeue-Regular"
+        },
+        "caption": {
+          "color": "#5b626e",
+          "sizePx": 14,
+          "fontFamily": "PlusJakartaSans-Regular"
+        },
+        "background": "#ffffff",
+        "metaTextColor": "#5b626e",
+        "highlightColor": "#187DB4",
+        "paginationColor": "#5b626e"
+      }
+    }
+  },
+  "slides": [
+    {
+      "index": 0,
+      "status": "success",
+      "usedFallbackLayout": true,
+      "imageUrl": "https://ioqazptafolroxwgkera.supabase.co/storage/v1/object/public/content-assets/11365b70-5e56-4d74-9adf-bdce6d14c10c/jobs/a4cd88d9-a13d-4018-93cb-22877b68c3c3/slide-0.png"
+    },
+    {
+      "index": 1,
+      "status": "success",
+      "usedFallbackLayout": true,
+      "imageUrl": "https://ioqazptafolroxwgkera.supabase.co/storage/v1/object/public/content-assets/11365b70-5e56-4d74-9adf-bdce6d14c10c/jobs/a4cd88d9-a13d-4018-93cb-22877b68c3c3/slide-1.png"
+    },
+    {
+      "index": 2,
+      "status": "success",
+      "usedFallbackLayout": true,
+      "imageUrl": "https://ioqazptafolroxwgkera.supabase.co/storage/v1/object/public/content-assets/11365b70-5e56-4d74-9adf-bdce6d14c10c/jobs/a4cd88d9-a13d-4018-93cb-22877b68c3c3/slide-2.png"
+    },
+    {
+      "index": 3,
+      "status": "success",
+      "usedFallbackLayout": true,
+      "imageUrl": "https://ioqazptafolroxwgkera.supabase.co/storage/v1/object/public/content-assets/11365b70-5e56-4d74-9adf-bdce6d14c10c/jobs/a4cd88d9-a13d-4018-93cb-22877b68c3c3/slide-3.png"
+    }
+  ]
+}

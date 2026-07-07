@@ -10,10 +10,12 @@ import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { Switch } from '@/components/ui/Switch';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/Card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
+import { Tabs, TabsContent } from '@/components/ui/Tabs';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { toast } from 'sonner';
-import { KeyRound, Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react';
+import { KeyRound, Eye, EyeOff, CheckCircle2, XCircle, Settings2 } from 'lucide-react';
 import type { AiUsageResponse } from '@/lib/types';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 type ApiKeySlot = 'text' | 'imageGeneration';
 
@@ -41,6 +43,7 @@ export default function SettingsPage() {
   const canConfigure = role === 'admin';
   const queryClient = useQueryClient();
 
+  const [activeTab, setActiveTab] = useState('ai');
   const [aiPrompt, setAiPrompt] = useState('Analyze this lead and determine if they are a good fit for B2B SaaS sales.');
   const [minScore, setMinScore] = useState('70');
   const [autoContact, setAutoContact] = useState(false);
@@ -172,14 +175,22 @@ export default function SettingsPage() {
 
   return (
     <div className="flex w-full flex-col gap-6 pb-12">
+      <PageHeader
+        title="Settings"
+        description="Configure AI models, API keys, billing, and general workspace preferences."
+      />
 
-
-      <Tabs defaultValue="ai" className="w-full">
-        <TabsList className="mb-6">
-          <TabsTrigger value="ai">AI Configuration</TabsTrigger>
-          <TabsTrigger value="billing">Billing & Usage</TabsTrigger>
-          <TabsTrigger value="general">General</TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} className="w-full">
+        <SegmentedControl
+          className="mb-6 w-full sm:w-auto"
+          options={[
+            { label: 'AI Configuration', value: 'ai' },
+            { label: 'Billing & Usage', value: 'billing' },
+            { label: 'General', value: 'general' }
+          ]}
+          value={activeTab}
+          onChange={setActiveTab}
+        />
 
         <TabsContent value="ai" className="flex flex-col gap-6">
           {/* ------------------------------------------------------------------ */}
@@ -288,7 +299,7 @@ export default function SettingsPage() {
                           <div className="flex gap-2 mt-1">
                             <Button
                               variant="primary"
-                              size="sm"
+                              size="md"
                               className="flex-1"
                               disabled={baseUrlValue.trim() === '' || saveApiKeyMutation.isPending}
                               onClick={() => saveApiKeyMutation.mutate({ slot: slot.id, key: inputValue.trim(), baseUrl: baseUrlValue.trim(), model: selectedModels[slot.id] })}
@@ -298,7 +309,7 @@ export default function SettingsPage() {
                             {hasKey && (
                               <Button
                                 variant="danger"
-                                size="sm"
+                                size="md"
                                 disabled={clearApiKeyMutation.isPending}
                                 onClick={() => clearApiKeyMutation.mutate(slot.id)}
                               >

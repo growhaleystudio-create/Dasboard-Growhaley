@@ -4,8 +4,7 @@
  * Design references:
  * - design.md → Algoritma Deduplikasi → Normalisasi & Kunci Identitas
  *   (R6.3): values are compared after `trim()` + `toLowerCase()`; the
- *   three matching rules (profile_url OR email OR name+location) are
- *   evaluated in order; empty / whitespace-only values are NEVER used
+ *   matching rules are evaluated in order; empty / whitespace-only values are NEVER used
  *   as a key (so two Leads that are simply both blank do not collapse).
  *
  * This module is a pure utility — no I/O, no clock reads, no randomness.
@@ -24,6 +23,7 @@ import type { NormalizedLead } from '@leads-generator/shared';
  * callers can compare keys with a plain string equality.
  */
 export type IdentityKey =
+  | { kind: 'phone'; value: string }
   | { kind: 'profile_url'; value: string }
   | { kind: 'email'; value: string }
   /** Serialized as `${nameNorm}|${locationNorm}` so it is a single string. */
@@ -57,17 +57,31 @@ export function isEmailLike(value: string): boolean {
 }
 
 /**
+ * Normalize a phone-ish public contact into digits only. Returns `null`
+ * when the input is not plausibly a phone number, so the dedup key is
+ * reserved for real phone contacts rather than arbitrary short strings.
+ */
+export function normalizePhoneForIdentity(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 6 ? digits : null;
+}
+
+/**
  * Build the ordered list of identity keys for a {@link NormalizedLead}.
  *
  * Order is significant: callers should attempt to match against existing
  * Leads in the order returned. Empty or whitespace-only fields are
  * skipped per R6.3.
  *
- * Rules (R6.3):
- * 1. `profileUrl` normalizes to non-empty → emit `{ kind: 'profile_url' }`.
- * 2. `publicContact` normalizes to non-empty AND looks like an email
+ * Rules:
+ * 1. `publicContact` that looks like a phone number → emit `{ kind: 'phone' }`.
+ * 2. `profileUrl` normalizes to non-empty → emit `{ kind: 'profile_url' }` only
+ *    when no phone key exists. This avoids false-positive merges between
+ *    branches/outlets that share one corporate website.
+ * 3. `publicContact` normalizes to non-empty AND looks like an email
  *    (see {@link isEmailLike}) → emit `{ kind: 'email' }`.
- * 3. Both `name` AND `location` normalize to non-empty → emit
+ * 4. Both `name` AND `location` normalize to non-empty → emit
  *    `{ kind: 'name_location', value: '${nameNorm}|${locationNorm}' }`.
  *
  * The returned list MAY be empty when none of the three rules apply; in
@@ -77,8 +91,13 @@ export function isEmailLike(value: string): boolean {
 export function buildIdentityKeys(lead: NormalizedLead): IdentityKey[] {
   const keys: IdentityKey[] = [];
 
+  const phone = normalizePhoneForIdentity(lead.publicContact);
+  if (phone !== null) {
+    keys.push({ kind: 'phone', value: phone });
+  }
+
   const profileUrl = normalizeForIdentity(lead.profileUrl);
-  if (profileUrl !== null) {
+  if (profileUrl !== null && phone === null) {
     keys.push({ kind: 'profile_url', value: profileUrl });
   }
 

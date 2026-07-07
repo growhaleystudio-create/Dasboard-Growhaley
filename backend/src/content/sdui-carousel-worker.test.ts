@@ -1,41 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import { getLayoutCatalogItem } from '@leads-generator/shared';
-import type { BrandKit, CarouselWorkflowArtifact, MasterTemplate, SduiSlide } from '@leads-generator/shared';
+import type { CarouselWorkflowArtifact, MasterTemplate, SduiSlide } from '@leads-generator/shared';
 import type { SduiCarouselWorkerDeps } from './sdui-carousel-worker.js';
 import { processSduiCarouselJob } from './sdui-carousel-worker.js';
 import { resolveSduiTextLimits } from './sdui-text-guardrails.js';
-
-function brandKit(): BrandKit {
-  return {
-    id: 'brand-1',
-    teamId: 'team-1',
-    logoUrl: '',
-    colors: ['#187DB4', '#1a1d24'],
-    fonts: [],
-    chrome: {
-      logoPlacement: 'none',
-      siteUrl: 'example.com',
-      pageNumberFormat: '{current}/{total}',
-    },
-    typography: {
-      header: { fontFamily: '', color: '#1a1d24' },
-      body: { fontFamily: '', color: '#5b626e' },
-      highlightColor: '#187DB4',
-      background: '#F4F3EF',
-      paginationColor: '#5b626e',
-      metaTextColor: '#5b626e',
-      accent: '#187DB4',
-    },
-    updatedAt: new Date(),
-  };
-}
 
 function masterTemplate(): MasterTemplate {
   return {
     id: 'template-1',
     teamId: 'team-1',
-    brandKitId: 'brand-1',
     allowedBlocks: ['heading', 'body', 'image'],
     maxSlides: 5,
     textLimits: [],
@@ -119,7 +93,7 @@ function emptyChecklistSlide(n = 2): SduiSlide {
     slide_number: n,
     slide_type: 'content',
     container_layout: 'text_dominant',
-    layout_variant_id: 'checklist_stack',
+    layout_variant_id: 'gw_poster_list',
     image_requirement: 'none',
     layout_source: 'ai_selected',
     typography_scale: 'balanced_classic',
@@ -180,7 +154,7 @@ function headerOnlyTextSlide(n = 2): SduiSlide {
     slide_number: n,
     slide_type: 'content',
     container_layout: 'text_dominant',
-    layout_variant_id: 'text_stack',
+    layout_variant_id: 'gw_poster_statement',
     image_requirement: 'none',
     layout_source: 'ai_selected',
     typography_scale: 'balanced_classic',
@@ -259,7 +233,7 @@ function ctaSlide(n = 5): SduiSlide {
   return {
     ...textSlide(n),
     layout_variant_id: 'cta_centered',
-    layout_family: 'cta',
+    layout_family: 'poster',
     nested_groups: {
       top_meta: [{ type: 'tag', text: 'LANGKAH' }],
       core_content: [
@@ -320,6 +294,21 @@ function makeDeps(overrides: {
         renderedSlides.push(JSON.parse(JSON.stringify(slide)) as SduiSlide);
         return Buffer.from('rendered');
       }),
+      renderSlideWithMetrics: vi.fn(async (slide: SduiSlide) => {
+        renderedSlides.push(JSON.parse(JSON.stringify(slide)) as SduiSlide);
+        return {
+          png: Buffer.from('rendered'),
+          metrics: {
+            contentMinY: 200,
+            contentMaxY: 800,
+            contentUsageRatio: 0.8,
+            overflow: false,
+            contentBoxCount: 3,
+            passes: 1 as const,
+            appliedScale: 1,
+          },
+        };
+      }),
     },
     imageClient: {
       generate: vi.fn(async () => overrides.imageResult ?? { ok: true as const, value: Buffer.from('') }),
@@ -360,9 +349,6 @@ function makeDeps(overrides: {
     masterTemplateRepo: {
       findByTeam: vi.fn(async () => masterTemplate()),
     },
-    brandKitRepo: {
-      findByTeam: vi.fn(async () => brandKit()),
-    },
     redisUrl: 'redis://localhost:6379',
     renderedSlides,
     updatedInputs,
@@ -380,7 +366,7 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
 
     await processSduiCarouselJob(deps, { teamId: 'team-1', jobId: 'job-1', actorId: 'actor-1' });
 
-    expect(deps.renderer.renderSlide).toHaveBeenCalled();
+    expect(deps.renderer.renderSlideWithMetrics).toHaveBeenCalled();
     expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
     expect(deps.updatedInputs[0]).toMatchObject({
       plannerFallbackUsed: true,
@@ -467,7 +453,7 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
 
     const repaired = deps.renderedSlides[1]!;
     const cards = repaired.nested_groups.core_content?.find((component) => component.type === 'feature_cards');
-    expect(['feature_cards_with_header', 'feature_cards_grid']).toContain(repaired.layout_variant_id);
+    expect(repaired.layout_variant_id).toBe('gw_poster_cards');
     expect(cards?.items_cards?.length).toBeGreaterThanOrEqual(2);
     expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
   });
@@ -515,8 +501,8 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
     const fourth = deps.renderedSlides[3]!;
     const header = fourth.nested_groups.core_content?.find((component) => component.type === 'header');
 
-    expect(fourth.layout_variant_id).not.toBe('stat_highlight');
-    expect(['text', 'editorial']).toContain(fourth.layout_family);
+    expect(fourth.layout_variant_id).not.toBe('gw_poster_stat');
+    expect(fourth.layout_family).toBe('poster');
     expect(fourth.image_requirement).toBe('none');
     expect(fourth.image_status).toBe('not_needed');
     expect(header?.text).toBe('Contoh Implementasi');
@@ -599,7 +585,7 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
     await processSduiCarouselJob(deps, { teamId: 'team-1', jobId: 'job-1', actorId: 'actor-1' });
 
     expect(deps.planner.plan).not.toHaveBeenCalled();
-    expect(deps.renderer.renderSlide).toHaveBeenCalledOnce();
+    expect(deps.renderer.renderSlideWithMetrics).toHaveBeenCalledOnce();
     const persistedWorkflow = deps.updatedInputs.at(-1)?.workflow as CarouselWorkflowArtifact | undefined;
     expect(persistedWorkflow?.workflowStage).toBe('rendered');
     expect(persistedWorkflow?.slides[0]?.renderedImageUrl).toBe('https://cdn.example.com/jobs/job-1/slide-0.png');
@@ -624,7 +610,7 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
     });
     expect(deps.planner.plan).not.toHaveBeenCalled();
     const renderedImageSlide = deps.renderedSlides[1]!;
-    expect(renderedImageSlide.layout_variant_id).toBe('split_text_left_image_right');
+    expect(renderedImageSlide.layout_variant_id).toBe('gw_photo_statement');
     expect(renderedImageSlide.image_status).toBe('generated');
     expect(renderedImageSlide.nested_groups.core_content?.some((component) => component.type === 'image_placeholder' && Boolean(component.imageUrl))).toBe(true);
     expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
@@ -702,7 +688,7 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
     expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
   });
 
-  it('fails the job honestly when a required image slide cannot be generated after retry', async () => {
+  it('degrades a required image slide to a no-image layout instead of failing the job', async () => {
     const deps = makeDeps({
       slides: [textSlide(1), imageSlide(2), textSlide(3)],
       imageResult: { ok: false, error: { code: 'INTERNAL', message: 'provider down' } },
@@ -710,23 +696,27 @@ describe('processSduiCarouselJob image-aware worker flow', () => {
 
     await processSduiCarouselJob(deps, { teamId: 'team-1', jobId: 'job-1', actorId: 'actor-1' });
 
-    // Job must be marked failed — required image cannot silently disappear
-    expect(deps.jobRepo.setStatus).toHaveBeenCalledWith('team-1', 'job-1', 'failed', 'provider_error');
-    // Slide rows are inserted as 'pending' first to satisfy the
-    // `slide_failed_has_reason` CHECK constraint (reason IS NOT NULL
-    // when status = 'failed'). Failed slides are then marked via updateSlide.
-    expect(deps.slideRepo.insertSlide).toHaveBeenCalledWith(
-      expect.objectContaining({ index: 1, status: 'pending' }),
-    );
-    expect(deps.slideRepo.updateSlide).toHaveBeenCalledWith(
-      'team-1',
-      'job-1',
-      1,
-      expect.objectContaining({ status: 'failed', reason: 'provider_error' }),
-    );
-    // No slides should have been rendered (we exit before render loop)
-    expect(deps.renderedSlides).toHaveLength(0);
-    // Planner repair should NOT have been called
-    expect(deps.planner.plan).not.toHaveBeenCalled();
+    // The deck always ships: job success, all 3 slides rendered.
+    expect(deps.jobRepo.setStatus).toHaveBeenLastCalledWith('team-1', 'job-1', 'success');
+    expect(deps.renderedSlides).toHaveLength(3);
+
+    // The failed-image slide is repaired into a no-image composition.
+    const degraded = deps.renderedSlides.find((s) => s.slide_number === 2);
+    expect(degraded).toBeDefined();
+    const components = [
+      ...(degraded!.nested_groups.top_meta ?? []),
+      ...(degraded!.nested_groups.core_content ?? []),
+      ...(degraded!.nested_groups.action_footer ?? []),
+    ];
+    expect(components.some((c) => c.type === 'image_placeholder')).toBe(false);
+
+    // The degradation is surfaced to the user as a quality warning.
+    const updateInputsCalls = (deps.jobRepo.updateInputs as ReturnType<typeof vi.fn>).mock.calls;
+    const persistedWarning = updateInputsCalls.some((call) => {
+      const inputs = call[2] as Record<string, unknown> | undefined;
+      const warnings = inputs?.plannerQualityWarnings;
+      return Array.isArray(warnings) && warnings.some((w) => String(w).startsWith('image_degraded'));
+    });
+    expect(persistedWarning).toBe(true);
   });
 });

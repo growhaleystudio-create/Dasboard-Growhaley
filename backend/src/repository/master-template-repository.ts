@@ -22,7 +22,6 @@ import { query, type DbExecutor } from './types.js';
 interface MasterTemplateRow {
   id: string;
   team_id: string;
-  brand_kit_id: string;
   allowed_blocks: BlockType[] | string;
   max_slides: number;
   text_limits: TextLengthLimit[] | string;
@@ -49,7 +48,6 @@ function mapRow(row: MasterTemplateRow): MasterTemplate {
   return {
     id: row.id,
     teamId: row.team_id,
-    brandKitId: row.brand_kit_id,
     allowedBlocks: parseJson<BlockType[]>(row.allowed_blocks, []),
     maxSlides: row.max_slides,
     textLimits: parseJson<TextLengthLimit[]>(row.text_limits, []),
@@ -59,7 +57,7 @@ function mapRow(row: MasterTemplateRow): MasterTemplate {
   };
 }
 
-const COLUMNS = `id, team_id, brand_kit_id, allowed_blocks, max_slides,
+const COLUMNS = `id, team_id, allowed_blocks, max_slides,
   text_limits, aspect_ratios, default_tone, updated_at`;
 
 // ---------------------------------------------------------------------------
@@ -93,7 +91,6 @@ export class MasterTemplateRepository {
   async upsert(
     teamId: string,
     data: {
-      brandKitId: string;
       allowedBlocks: BlockType[];
       maxSlides: number;
       textLimits: TextLengthLimit[];
@@ -104,11 +101,10 @@ export class MasterTemplateRepository {
     const rows = await query<MasterTemplateRow>(
       this.db,
       `INSERT INTO master_template
-           (team_id, brand_kit_id, allowed_blocks, max_slides, text_limits, aspect_ratios, default_tone, updated_at)
-           VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, $6::jsonb, $7, now())
+           (team_id, allowed_blocks, max_slides, text_limits, aspect_ratios, default_tone, updated_at)
+           VALUES ($1, $2::jsonb, $3, $4::jsonb, $5::jsonb, $6, now())
        ON CONFLICT (team_id)
        DO UPDATE SET
-           brand_kit_id   = EXCLUDED.brand_kit_id,
            allowed_blocks = EXCLUDED.allowed_blocks,
            max_slides     = EXCLUDED.max_slides,
            text_limits    = EXCLUDED.text_limits,
@@ -118,7 +114,6 @@ export class MasterTemplateRepository {
        RETURNING ${COLUMNS}`,
       [
         teamId,
-        data.brandKitId,
         JSON.stringify(data.allowedBlocks),
         data.maxSlides,
         JSON.stringify(data.textLimits),

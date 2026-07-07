@@ -15,6 +15,7 @@ import type {
   SduiPlannerInput,
   SduiPlanResult,
   SduiPlannerError,
+  SduiSlide,
 } from './types.js';
 
 import { buildPrompt } from './prompt/prompt-builder.js';
@@ -37,9 +38,31 @@ export class DefaultSduiPlanner implements SduiPlanner {
   constructor(private readonly deps: SduiPlannerDeps) {}
 
   async plan(
-    input: SduiPlannerInput,
+    rawInput: SduiPlannerInput,
     signal: AbortSignal,
   ): Promise<Result<SduiPlanResult, SduiPlannerError>> {
+    // Resolve team-approved example structures (few-shot structural templates)
+    // before prompt building — buildPrompt itself stays synchronous. Retrieval
+    // failure must never fail the job; examples are an enhancement.
+    let approvedExamples = rawInput.approvedExamples ?? [];
+    if (approvedExamples.length === 0 && this.deps.exampleRetriever) {
+      try {
+        approvedExamples = await this.deps.exampleRetriever.topRelevant(
+          rawInput.teamId,
+          {
+            aspectRatio: rawInput.aspectRatio,
+            tags: rawInput.contentTags ?? [],
+            intendedBlocks: [],
+          },
+          3,
+        );
+      } catch (error) {
+        console.warn('[sdui-planner] approved-example retrieval failed, continuing without', error);
+        approvedExamples = [];
+      }
+    }
+    const input: SduiPlannerInput = { ...rawInput, approvedExamples };
+
     const fullPrompt = buildPrompt(input);
     const textBaseUrl = await this.deps.settings.loadApiBaseUrl(input.teamId, 'content_suggestion');
 
@@ -81,6 +104,25 @@ export class DefaultSduiPlanner implements SduiPlanner {
       return parseSlides(parsed, input.typographyOverride);
     };
 
+    // Applies text guardrails and records which slides were mutated, so
+    // forced adjustments surface as qualityWarnings instead of happening
+    // silently.
+    const applyGuardrailsWithAudit = (
+      slides: SduiSlide[],
+    ): { slides: SduiSlide[]; warnings: string[] } => {
+      const warnings: string[] = [];
+      const guarded = slides.map((slide) => {
+        const next = applySduiTextGuardrails(slide, { typography: input.typographyOverride });
+        if (JSON.stringify(next) !== JSON.stringify(slide)) {
+          warnings.push(
+            `guardrails_adjusted: teks/komponen slide ${slide.slide_number} disesuaikan otomatis agar muat layout`,
+          );
+        }
+        return next;
+      });
+      return { slides: guarded, warnings };
+    };
+
     const wrapperResult = await executePlannerPrompt(fullPrompt);
 
     if (!wrapperResult.ok) {
@@ -109,26 +151,31 @@ export class DefaultSduiPlanner implements SduiPlanner {
       if (input.repairMode !== 'image_failure_no_image') {
         repaired.slides = ensureExplicitImageRequest(input.prompt, repaired.slides);
       }
-      repaired.slides = repaired.slides.map((slide) =>
-        applySduiTextGuardrails(slide, { typography: input.typographyOverride }),
-      );
+      const repairedAudit = applyGuardrailsWithAudit(repaired.slides);
+      repaired.slides = repairedAudit.slides;
       const remainingIssues = [
         ...sduiTextFitIssues(repaired.slides, { typography: input.typographyOverride }),
         ...sduiContentQualityIssues(repaired.slides),
         ...sduiImageRequirementIssues(input, repaired.slides),
       ];
-      if (remainingIssues.length > 0) {
+      const repairWarnings = [...remainingIssues, ...repairedAudit.warnings];
+      if (repairWarnings.length > 0) {
         return ok({
           ...repaired,
-          qualityWarnings: remainingIssues,
+          qualityWarnings: repairWarnings,
         }) as Result<SduiPlanResult, SduiPlannerError>;
       }
       return ok(repaired) as Result<SduiPlanResult, SduiPlannerError>;
     }
 
-    result.slides = result.slides.map((slide) =>
-      applySduiTextGuardrails(slide, { typography: input.typographyOverride }),
-    );
+    const audit = applyGuardrailsWithAudit(result.slides);
+    result.slides = audit.slides;
+    if (audit.warnings.length > 0) {
+      return ok({
+        ...result,
+        qualityWarnings: audit.warnings,
+      }) as Result<SduiPlanResult, SduiPlannerError>;
+    }
     return ok(result) as Result<SduiPlanResult, SduiPlannerError>;
   }
 }

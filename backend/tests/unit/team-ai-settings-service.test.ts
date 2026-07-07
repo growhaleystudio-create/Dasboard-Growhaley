@@ -263,6 +263,52 @@ describe('TeamAiSettingsService', () => {
     });
   });
 
+  describe('centralized key (CENTRAL_AI_TEAM_ID)', () => {
+    const CENTRAL = 'central-team';
+    let centralFake: FakeTeamAiSettingsRepository;
+    let centralService: TeamAiSettingsService;
+
+    beforeEach(() => {
+      centralFake = new FakeTeamAiSettingsRepository();
+      const vault = new CredentialVault(TEST_KEY);
+      centralService = new TeamAiSettingsService(
+        centralFake as unknown as TeamAiSettingsRepository,
+        vault,
+        CENTRAL,
+      );
+    });
+
+    it('writes go to the central row regardless of caller team', async () => {
+      await centralService.setApiKey(TEAM_A, 'shared-key');
+      // Stored under the central team, NOT the caller's team.
+      expect(centralFake.rawEnvelope(CENTRAL)).not.toBeNull();
+      expect(centralFake.rawEnvelope(TEAM_A)).toBeNull();
+    });
+
+    it('every team reads the same shared key', async () => {
+      await centralService.setApiKey(TEAM_A, 'shared-key');
+      expect(await centralService.loadApiKey(TEAM_A)).toBe('shared-key');
+      expect(await centralService.loadApiKey(TEAM_B)).toBe('shared-key');
+      expect(await centralService.loadApiKey('any-other-team')).toBe('shared-key');
+    });
+
+    it('config (getSettings/hasApiKey) also resolves to central', async () => {
+      await centralService.setApiKey(TEAM_A, 'k');
+      await centralService.setAiEnabled(TEAM_B, true);
+      // Both writes landed on the central row → any team sees them.
+      expect(await centralService.hasApiKey('team-x')).toBe(true);
+      expect((await centralService.getSettings('team-y')).aiEnabled).toBe(true);
+    });
+
+    it('without a central team id, keys stay per-team (backward compat)', async () => {
+      // `service` (no central id) from the outer beforeEach.
+      await service.setApiKey(TEAM_A, 'a');
+      await service.setApiKey(TEAM_B, 'b');
+      expect(await service.loadApiKey(TEAM_A)).toBe('a');
+      expect(await service.loadApiKey(TEAM_B)).toBe('b');
+    });
+  });
+
   describe('setAiIntentFactorWeight', () => {
     it('accepts zero and positive weights', async () => {
       await service.setAiIntentFactorWeight(TEAM_A, 0);

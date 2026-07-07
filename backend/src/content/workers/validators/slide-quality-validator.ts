@@ -7,6 +7,7 @@
 
 import type { SduiComponent, SduiSlide } from '@leads-generator/shared';
 import { SlideUtils } from '../utils/slide-utils.js';
+import { promptExplicitlyRequestsNoImages } from '../../sdui-planner/image/image-detection.js';
 
 // Local type alias for layout variant IDs (string-based)
 type LayoutVariantId = string;
@@ -266,6 +267,9 @@ function hasRenderableComponent(slide: SduiSlide, type: SduiComponent['type']): 
  * Calculate required visual slide count based on prompt analysis.
  */
 function requiredVisualSlideCount(prompt: string, slideCount: number): number {
+  // "tanpa gambar / teks saja" wins: the word "gambar" in a negation must not
+  // trip the image-required heuristic and re-add photos to a text-only deck.
+  if (promptExplicitlyRequestsNoImages(prompt)) return 0;
   const promptRequestsVisualLed =
     /\b(visual[\s-]led|visually[\s-]driven|image[\s-]heavy|photo[\s-]driven|dipimpin\s+visual|berat\s+gambar|fokus\s+visual|carousel\s+foto)\b/i.test(
       prompt,

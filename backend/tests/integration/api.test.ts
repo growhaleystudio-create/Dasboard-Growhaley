@@ -43,7 +43,6 @@ describe('API Server', () => {
         settings: {} as any,
         budget: {} as any,
         audit: {} as any,
-        brandKitService: {} as any,
         masterTemplateService: {} as any,
         contentGeneratorService: {} as any,
         approvedExampleService: {} as any,

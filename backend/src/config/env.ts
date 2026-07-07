@@ -99,6 +99,14 @@ const EnvSchema = z
     SUPABASE_URL: z.string().url().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
     SUPABASE_BUCKET: z.string().default('content-assets'),
+    /**
+     * Canonical team id whose `team_ai_settings` row holds the ONE shared AI
+     * API key used across the whole (single-tenant) app. When set, all AI key
+     * / model / base-url reads and writes resolve to this team regardless of
+     * the caller's team — the admin configures it once. Must be an existing
+     * team id. When unset, behaviour is per-team (legacy, backward compatible).
+     */
+    CENTRAL_AI_TEAM_ID: z.string().uuid().optional(),
   })
   .superRefine((env, ctx) => {
     // Production must have a master key set, full stop.

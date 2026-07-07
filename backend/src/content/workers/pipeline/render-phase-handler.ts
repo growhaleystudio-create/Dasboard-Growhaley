@@ -54,6 +54,7 @@ export async function renderAndUploadSlides(
 
   console.log(`[render-phase] job=${jobId} starting ${slides.length} slides`);
   const renderT0 = Date.now();
+  const renderWarnings: string[] = [];
 
   for (const slide of slides) {
     const index = slide.slide_number - 1;
@@ -67,11 +68,30 @@ export async function renderAndUploadSlides(
       blockComposition: SlideUtils.blockComposition(slide),
     });
 
-    // Render slide → PNG
+    // Render slide → PNG (two-pass: measured correction runs inside renderer)
     const renderSlideT0 = Date.now();
     let png: Buffer;
     try {
-      png = await deps.renderer.renderSlide(slide, doc, brandFonts);
+      const rendered = await deps.renderer.renderSlideWithMetrics(slide, doc, brandFonts);
+      png = rendered.png;
+      const m = rendered.metrics;
+      // Photo/collage layouts are bottom-anchored by design — low vertical
+      // usage there is intentional, only overflow is a real defect.
+      const underfillExempt =
+        (slide.layout_variant_id ?? '').startsWith('gw_photo_') ||
+        slide.layout_variant_id === 'gw_collage_showcase';
+      if (m.contentBoxCount > 0 && (m.overflow || (!underfillExempt && m.contentUsageRatio < 0.4))) {
+        // Post-correction metrics still poor → surface as a quality warning
+        // (never fail the job for aesthetics).
+        renderWarnings.push(
+          m.overflow
+            ? `render_quality: slide ${slide.slide_number} konten menabrak area chrome bawah setelah koreksi otomatis`
+            : `render_quality: slide ${slide.slide_number} kanvas terisi tipis (${Math.round(m.contentUsageRatio * 100)}% area konten)`,
+        );
+      }
+      if (m.passes === 2) {
+        logTiming('render_second_pass', 0, { slide: index, scale: m.appliedScale });
+      }
     } catch (e) {
       console.error(`[render-phase] render failed slide ${index}:`, e);
       logTiming('render_slide', Date.now() - renderSlideT0, { slide: index, ok: false });
@@ -129,6 +149,15 @@ export async function renderAndUploadSlides(
 
   logTiming('render_total', Date.now() - renderT0, { slides: slides.length });
 
+  // Surface render-quality warnings alongside the planner's warnings so the
+  // dashboard shows them on the finished job.
+  if (renderWarnings.length > 0) {
+    const existing = Array.isArray(finalInputs.plannerQualityWarnings)
+      ? (finalInputs.plannerQualityWarnings as string[])
+      : [];
+    finalInputs.plannerQualityWarnings = [...existing, ...renderWarnings];
+  }
+
   // Finalize workflow artifact
   const workflow = finalInputs.workflow as CarouselWorkflowArtifact | undefined;
   if (workflow) {
@@ -136,6 +165,8 @@ export async function renderAndUploadSlides(
     workflow.slidePrompts = enrichWorkflowSlidePrompts(slides, ctx.prompt);
     workflow.workflowStage = 'rendered';
     workflow.updatedAt = new Date().toISOString();
+  }
+  if (workflow || renderWarnings.length > 0) {
     await deps.jobRepo.updateInputs(teamId, jobId, finalInputs);
   }
 

@@ -24,7 +24,11 @@
  * explicitly via {@link BuildSnapshotOptions.postSnippet}; the builder
  * never derives a snippet from any other (potentially private) field.
  */
-import type { PublicLeadSnapshot, PublicWebsiteAudit } from '@leads-generator/shared';
+import type {
+  LeadScoreBreakdown,
+  PublicLeadSnapshot,
+  PublicWebsiteAudit,
+} from '@leads-generator/shared';
 
 /**
  * The exactly-six keys that may appear on a {@link PublicLeadSnapshot}
@@ -40,7 +44,9 @@ export const PUBLIC_SNAPSHOT_FIELDS = [
   'location',
   'matchedKeywords',
   'postSnippet',
+  'businessProfile',
   'websiteAudit',
+  'scoringBreakdown',
 ] as const;
 
 /**
@@ -84,8 +90,27 @@ export interface BuildSnapshotOptions {
    * from private data.
    */
   postSnippet?: string;
+  /** Public business signals (rating/reviews/category) from the Google Maps audit attributes. */
+  businessProfile?: {
+    rating?: number;
+    reviewCount?: number;
+    category?: string;
+  };
   /** Publicly observable website audit signals collected from the lead website URL. */
   websiteAudit?: PublicWebsiteAudit;
+  /** Deterministic score breakdown safe to share with the AI explainer. */
+  scoringBreakdown?: Pick<
+    LeadScoreBreakdown,
+    | 'businessValueScore'
+    | 'websiteNeedScore'
+    | 'reachabilityScore'
+    | 'confidenceScore'
+    | 'confidenceModifier'
+    | 'baseScore'
+    | 'finalScore'
+    | 'hasWebsite'
+    | 'scoringVersion'
+  >;
 }
 
 /**
@@ -140,6 +165,10 @@ export function buildPublicLeadSnapshot(
     ...(isMeaningfulString(opts.postSnippet)
       ? { postSnippet: opts.postSnippet }
       : {}),
+    ...(opts.businessProfile !== undefined ? { businessProfile: opts.businessProfile } : {}),
     ...(opts.websiteAudit !== undefined ? { websiteAudit: opts.websiteAudit } : {}),
+    ...(opts.scoringBreakdown !== undefined
+      ? { scoringBreakdown: opts.scoringBreakdown }
+      : {}),
   };
 }

@@ -25,7 +25,7 @@ function slide(
 }
 
 describe('SDUI layout diversity resolver', () => {
-  it('avoids repeated layout ids and reaches 4 families for a 5-slide deck when possible', () => {
+  it('avoids repeated layout ids and reaches 4 unique variants for a 5-slide deck when possible', () => {
     const slides = [
       slide(
         1,
@@ -33,7 +33,7 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'Cover' },
           { type: 'body', text: 'Intro' },
         ],
-        'text_stack',
+        'gw_poster_cover',
       ),
       slide(
         2,
@@ -41,7 +41,7 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'Point' },
           { type: 'body', text: 'Body' },
         ],
-        'text_stack',
+        'gw_poster_statement',
       ),
       slide(
         3,
@@ -49,9 +49,9 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'Checklist' },
           { type: 'checklist', items: ['A', 'B'] },
         ],
-        'checklist_stack',
+        'gw_poster_list',
       ),
-      slide(4, [{ type: 'quote', text: 'Quote' }], 'quote_focus'),
+      slide(4, [{ type: 'quote', text: 'Quote' }], 'gw_poster_quote'),
       slide(
         5,
         [
@@ -59,7 +59,7 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'body', text: 'Go' },
           { type: 'button_cta', label: 'Start' },
         ],
-        'header_body_cta',
+        'gw_poster_cta',
       ),
     ];
 
@@ -68,7 +68,8 @@ describe('SDUI layout diversity resolver', () => {
     for (let i = 1; i < resolved.length; i++) {
       expect(resolved[i]!.layout_variant_id).not.toBe(resolved[i - 1]!.layout_variant_id);
     }
-    expect(new Set(resolved.map((s) => s.layout_family)).size).toBeGreaterThanOrEqual(4);
+    // With 3 families, diversity is tracked at the variant level
+    expect(new Set(resolved.map((s) => s.layout_variant_id)).size).toBeGreaterThanOrEqual(4);
   });
 
   it('keeps repaired slides on no-image layouts only', () => {
@@ -79,7 +80,7 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'Cover' },
           { type: 'image_placeholder', image_object_context: 'hero' },
         ],
-        'cover_image_full',
+        'gw_photo_statement',
         'required',
       ),
       slide(
@@ -88,7 +89,7 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'Explain' },
           { type: 'body', text: 'No image after repair' },
         ],
-        'split_text_left_image_right',
+        'gw_photo_rotated',
         'none',
       ),
     ];
@@ -97,7 +98,7 @@ describe('SDUI layout diversity resolver', () => {
       forceNoImageSlideNumbers: new Set([2]),
     });
 
-    expect(resolved[1]!.layout_variant_id).not.toBe('split_text_left_image_right');
+    expect(resolved[1]!.layout_variant_id).not.toBe('gw_photo_rotated');
     expect(LayoutProcessor.isValidNoImageRepair(resolved[1]!)).toBe(true);
   });
 
@@ -109,7 +110,7 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'AI untuk Promosi UMKM' },
           { type: 'body', text: 'Intro singkat' },
         ],
-        'cover_centered',
+        'gw_poster_cover',
       ),
       slide(
         2,
@@ -117,7 +118,7 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'Promosi Lebih Cepat' },
           { type: 'body', text: 'AI membantu membuat caption dan ide konten.' },
         ],
-        'text_stack',
+        'gw_poster_statement',
       ),
       slide(
         3,
@@ -125,7 +126,7 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'Benefit Utama' },
           { type: 'checklist', items: ['Ide konten cepat', 'Caption konsisten'] },
         ],
-        'checklist_stack',
+        'gw_poster_list',
       ),
       slide(
         4,
@@ -136,7 +137,7 @@ describe('SDUI layout diversity resolver', () => {
             text: 'Gunakan AI untuk membuat deskripsi produk yang persuasif dan postingan media sosial.',
           },
         ],
-        'split_text_left_image_right',
+        'gw_photo_rotated',
         'required',
       ),
       slide(
@@ -145,15 +146,15 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'Mulai Hari Ini' },
           { type: 'button_cta', label: 'Mulai Sekarang' },
         ],
-        'cta_centered',
+        'gw_poster_cta',
       ),
     ];
 
     const resolved = LayoutProcessor.enforceLayoutDiversity(slides);
     const fourth = resolved[3]!;
 
-    expect(fourth.layout_family).toBe('text');
-    expect(fourth.layout_variant_id).not.toBe('stat_highlight');
+    expect(fourth.layout_family).toBe('poster');
+    expect(fourth.layout_variant_id).not.toBe('gw_poster_stat');
     expect(fourth.image_requirement).toBe('none');
     expect(fourth.image_status).toBe('not_needed');
   });
@@ -166,7 +167,7 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'AI untuk Promosi UMKM' },
           { type: 'body', text: 'Intro singkat' },
         ],
-        'cover_centered',
+        'gw_poster_cover',
       ),
       slide(
         2,
@@ -174,7 +175,7 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'Promosi Lebih Cepat' },
           { type: 'body', text: 'AI membantu membuat caption.' },
         ],
-        'text_stack',
+        'gw_poster_statement',
       ),
       slide(
         3,
@@ -182,9 +183,9 @@ describe('SDUI layout diversity resolver', () => {
           { type: 'header', text: 'Benefit Utama' },
           { type: 'checklist', items: ['Ide cepat', 'Caption konsisten'] },
         ],
-        'checklist_stack',
+        'gw_poster_list',
       ),
-      slide(4, [{ type: 'quote', text: 'AI membantu promosi tetap konsisten.' }], 'quote_focus'),
+      slide(4, [{ type: 'quote', text: 'AI membantu promosi tetap konsisten.' }], 'gw_poster_quote'),
       slide(
         5,
         [
@@ -195,15 +196,15 @@ describe('SDUI layout diversity resolver', () => {
           },
           { type: 'button_cta', label: 'Konsultasi Gratis' },
         ],
-        'stat_highlight',
+        'gw_poster_stat',
       ),
     ];
 
     const resolved = LayoutProcessor.enforceLayoutDiversity(slides);
     const fifth = resolved[4]!;
 
-    expect(fifth.layout_variant_id).not.toBe('stat_highlight');
-    expect(fifth.layout_family).toBe('cta');
+    expect(fifth.layout_variant_id).not.toBe('gw_poster_stat');
+    expect(fifth.layout_variant_id).toBe('gw_poster_cta');
   });
 
   it('rejects image_placeholder in repaired slides', () => {
@@ -213,7 +214,7 @@ describe('SDUI layout diversity resolver', () => {
         { type: 'header', text: 'Bad repair' },
         { type: 'image_placeholder', image_object_context: 'still here' },
       ],
-      'text_stack',
+      'gw_poster_statement',
       'none',
     );
 

@@ -6,9 +6,10 @@
  * this finder locates the existing canonical (`is_duplicate = false`) Lead
  * for a Team whose identity matches ANY of the three R6.3 rules:
  *
- * 1. `profile_url` — `lower(btrim(profile_url)) = key`
- * 2. `email`       — `lower(btrim(public_contact)) = key`
- * 3. `name_location` — `lower(btrim(name)) || '|' || lower(btrim(location)) = key`
+ * 1. `phone`         — digits-only `public_contact` = key
+ * 2. `profile_url`   — `lower(btrim(profile_url)) = key`
+ * 3. `email`         — `lower(btrim(public_contact)) = key`
+ * 4. `name_location` — `lower(btrim(name)) || '|' || lower(btrim(location)) = key`
  *
  * The comparison applies `lower(btrim(...))` in SQL to mirror the
  * `trim()` + `toLowerCase()` normalization the key builder uses, so the
@@ -35,6 +36,8 @@ const LEAD_COLUMNS = `
   public_contact,
   profile_url,
   location,
+  whatsapp_url,
+  whatsapp_number,
   matched_keywords,
   status,
   score,
@@ -54,6 +57,7 @@ const LEAD_COLUMNS = `
 
 /** SQL expression building the normalized `name|location` composite key. */
 const NAME_LOCATION_EXPR = `lower(btrim(name)) || '|' || lower(btrim(location))`;
+const PHONE_EXPR = `regexp_replace(coalesce(public_contact, ''), '[^0-9]', '', 'g')`;
 
 /**
  * {@link CanonicalLeadFinder} implemented over a {@link DbExecutor}
@@ -92,6 +96,9 @@ export class SqlCanonicalLeadFinder implements CanonicalLeadFinder {
       const placeholder = `$${params.length}`;
 
       switch (key.kind) {
+        case 'phone':
+          predicates.push(`${PHONE_EXPR} = ${placeholder}`);
+          break;
         case 'profile_url':
           predicates.push(`lower(btrim(profile_url)) = ${placeholder}`);
           break;

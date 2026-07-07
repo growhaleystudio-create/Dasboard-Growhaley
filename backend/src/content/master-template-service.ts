@@ -21,7 +21,6 @@ import type { AspectRatio, BlockType, MasterTemplate, MasterTemplateRules, TextL
 import { err, ok, type Result } from '@leads-generator/shared';
 
 import type { AuditLog } from '../privacy/audit-log.js';
-import type { BrandKitRepository } from '../repository/brand-kit-repository.js';
 import type { MasterTemplateRepository } from '../repository/master-template-repository.js';
 
 // ---------------------------------------------------------------------------
@@ -111,20 +110,17 @@ function validateInput(input: MasterTemplateInput): string[] {
 export class MasterTemplateService {
   constructor(
     private readonly templateRepo: MasterTemplateRepository,
-    private readonly brandKitRepo: BrandKitRepository,
     private readonly audit: AuditLog,
   ) {}
 
   /**
    * Validate and upsert the Master_Template for a Team.
    *
-   * Validation rules (R2.1, R2.3, R2.4 — collect ALL violations):
-   * 1. Team must already have a BrandKit (R2.4).
-   * 2. brandKitId must reference the Team's BrandKit.
-   * 3. allowedBlocks ⊆ VALID_BLOCKS.
-   * 4. maxSlides ∈ [1, 10].
-   * 5. textLimits: each maxChars > 0.
-   * 6. aspectRatios ⊆ VALID_RATIOS, at least one value.
+   * Validation rules (R2.1, R2.3 — collect ALL violations):
+   * 1. allowedBlocks ⊆ VALID_BLOCKS.
+   * 2. maxSlides ∈ [1, 10].
+   * 3. textLimits: each maxChars > 0.
+   * 4. aspectRatios ⊆ VALID_RATIOS, at least one value.
    *
    * On any violation the existing Master_Template is NOT modified (R2.3).
    * On success the upsert + audit entry are written atomically (R2.1).
@@ -134,25 +130,7 @@ export class MasterTemplateService {
     actorId: string,
     input: MasterTemplateInput,
   ): Promise<Result<MasterTemplate>> {
-    const violations: string[] = [];
-
-    // --- Step 1: Brand_Kit existence check (I/O; R2.4) ---
-    // Per task spec: brandKit check is the FIRST step; collect into violations.
-    let brandKit: Awaited<ReturnType<BrandKitRepository['findByTeam']>> = null;
-    try {
-      brandKit = await this.brandKitRepo.findByTeam(teamId);
-    } catch {
-      // Treat repository errors as internal — bubble up.
-      throw new Error('Failed to verify Brand_Kit existence');
-    }
-
-    if (!brandKit) {
-      violations.push('Brand_Kit wajib disusun terlebih dahulu');
-    }
-
-    // --- Steps 2–7: field-level violations (pure, no further I/O) ---
-    const fieldViolations = validateInput(input);
-    violations.push(...fieldViolations);
+    const violations = validateInput(input);
 
     if (violations.length > 0) {
       return err({ code: 'VALIDATION', messages: violations });
@@ -160,7 +138,6 @@ export class MasterTemplateService {
 
     // --- Phase 3: Upsert (R2.1) ---
     const saved = await this.templateRepo.upsert(teamId, {
-      brandKitId: input.brandKitId,
       allowedBlocks: input.allowedBlocks,
       maxSlides: input.maxSlides,
       textLimits: input.textLimits,
@@ -175,7 +152,7 @@ export class MasterTemplateService {
       action: 'content_manage',
       objectType: 'master_template',
       objectId: saved.id,
-      metadata: { op: 'save', brandKitId: input.brandKitId },
+      metadata: { op: 'save' },
     });
 
     return ok(saved);
@@ -216,7 +193,6 @@ export class MasterTemplateService {
       textLimits: textLimitsMap as ReadonlyMap<BlockType, number>,
       aspectRatios: new Set<AspectRatio>(template.aspectRatios),
       defaultTone: template.defaultTone,
-      brandKitId: template.brandKitId,
     };
 
     return ok(rules);

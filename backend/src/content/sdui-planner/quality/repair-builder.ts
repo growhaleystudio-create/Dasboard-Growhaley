@@ -22,7 +22,7 @@ export function buildCompletenessRepairPrompt(
         `QUALITY REPAIR WAJIB. Perbaiki issue berikut: ${issues.join('; ')}. ` +
         `Jangan ubah jumlah slide. Jangan buat slide content hanya header. ` +
         `Setiap slide content harus punya minimal 2 content units bermakna; tambah body, feature_cards, comparison, stat_row, timeline, callout, atau numbered_list jika slide masih kosong. ` +
-        `Hindari text_stack/text_centered/big_statement sebagai fallback jika layout rich/cards/comparison cocok. ` +
+        `Pilih varian yang paling sesuai komponen: gw_poster_list untuk checklist, gw_poster_stat untuk angka, gw_poster_cards untuk comparison/cards, gw_poster_quote untuk kutipan. ` +
         `Checklist harus punya minimal 2 item non-empty. Body/quote harus non-empty bila layout membutuhkannya. ` +
         `Jika ada body/quote/checklistItem yang berakhir dengan kata sambung seperti "yang", "dan", "untuk", "dengan", tulis ulang menjadi frasa/kalimat pendek yang selesai. ` +
         `Jika teks terlalu panjang untuk textLimits, JANGAN sekadar memotong. Ringkas secara natural, pecah ide menjadi checklist/CTA bila cocok, atau pilih layout_variant_id lain yang lebih sesuai. ` +

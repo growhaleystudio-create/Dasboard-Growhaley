@@ -33,8 +33,9 @@
  * (Task 21 perf) will use the exact same field set.
  */
 
-import type { Lead, LeadStatus } from '@leads-generator/shared';
+import type { Lead, LeadStatus, WhatsAppVerificationStatus } from '@leads-generator/shared';
 import type { AIState } from '@leads-generator/shared';
+import { isBusinessWebsiteUrl } from '../url/business-website.js';
 
 /**
  * Filter criteria for the Lead list. Every field is optional; a field that
@@ -68,6 +69,8 @@ export interface LeadFilter {
   websiteStatuses?: ('have_website' | 'no_website')[];
   /** Restrict by persisted AI enrichment lifecycle. */
   aiStates?: AIState[];
+  /** Restrict by manual WhatsApp verification outcome. */
+  whatsappVerificationStatuses?: WhatsAppVerificationStatus[];
 }
 
 /** Minimum length (after trimming) of a search term (R9.2). */
@@ -236,6 +239,13 @@ export function matchesFilter(lead: Lead, f: LeadFilter): boolean {
     return false;
   }
 
+  if (
+    f.whatsappVerificationStatuses !== undefined &&
+    !f.whatsappVerificationStatuses.includes(lead.whatsappVerificationStatus)
+  ) {
+    return false;
+  }
+
   return true;
 }
 
@@ -246,12 +256,5 @@ function ratingFromLead(lead: Lead): number | null {
 }
 
 function hasBusinessWebsite(value: string | undefined): boolean {
-  if (!value) return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  if (/^https?:\/\/(?:www\.)?openstreetmap\.org\//i.test(trimmed)) return false;
-  if (/instagram\.com|facebook\.com|fb\.com|threads\.net|linkedin\.com|twitter\.com|x\.com/i.test(trimmed)) {
-    return false;
-  }
-  return true;
+  return isBusinessWebsiteUrl(value);
 }

@@ -266,17 +266,18 @@ describe('SlideContentAnalyzer', () => {
       expect(SlideContentAnalyzer.isValidNoImageRepair(slideWithoutLayout)).toBe(true);
     });
 
-    it('should return true for cover_image_full layout (defaults to text family)', () => {
-      // cover_image_full is NOT in LAYOUT_FAMILY_MAP, defaults to 'text'
+    it('should return false for gw_photo_statement layout (supports image)', () => {
+      // gw_photo_statement is in the photo family and supports images,
+      // so it is NOT a valid no-image repair target.
       const slide = createSlide({
-        layout_variant_id: 'cover_image_full',
+        layout_variant_id: 'gw_photo_statement',
         nested_groups: {
           top_meta: [],
           core_content: [{ type: 'header', text: 'Title' }],
           action_footer: [],
         },
       });
-      expect(SlideContentAnalyzer.isValidNoImageRepair(slide)).toBe(true);
+      expect(SlideContentAnalyzer.isValidNoImageRepair(slide)).toBe(false);
     });
 
     it('should return true for checklist_stack layout (no image support)', () => {

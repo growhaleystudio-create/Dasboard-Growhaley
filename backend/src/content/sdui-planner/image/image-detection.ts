@@ -10,6 +10,17 @@ export function promptExplicitlyRequestsImages(prompt: string): boolean {
 }
 
 /**
+ * Returns true if the prompt explicitly asks for a text-only / no-image deck.
+ * Wins over promptExplicitlyRequestsImages when both match ("... tanpa gambar"),
+ * because a negation is the user's clearest possible intent.
+ */
+export function promptExplicitlyRequestsNoImages(prompt: string): boolean {
+  return /\b(tanpa\s+(gambar|foto|image|visual|ilustrasi)|no\s+image|no\s+photo|text[-\s]?only|teks\s+(saja|doang|aja)|cuma\s+teks|hanya\s+teks|full\s+text)\b/i.test(
+    prompt,
+  );
+}
+
+/**
  * Returns true if the prompt implies a visual-led deck (product, promo, aesthetic focus).
  */
 export function promptRequestsVisualLedDeck(prompt: string): boolean {

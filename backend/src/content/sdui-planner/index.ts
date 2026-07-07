@@ -48,7 +48,11 @@ export {
 } from './image/image-enforcer.js';
 
 // Image detection (useful for pre-flight checks)
-export { promptExplicitlyRequestsImages, promptRequestsVisualLedDeck } from './image/image-detection.js';
+export {
+  promptExplicitlyRequestsImages,
+  promptExplicitlyRequestsNoImages,
+  promptRequestsVisualLedDeck,
+} from './image/image-detection.js';
 
 // Quality checking (useful for worker repair logic)
 export { sduiImageRequirementIssues } from './quality/quality-checker.js';

@@ -17,7 +17,7 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 min-w-[8rem] overflow-hidden rounded-ui border border-stroke-soft-200 bg-bg-white-0 p-1 text-text-strong-950 shadow-[0px_12px_28px_rgba(10,13,20,0.12),0px_1px_2px_rgba(10,13,20,0.03)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1",
+        "z-50 min-w-[8rem] overflow-hidden rounded-ui border border-stroke-soft-200 bg-bg-white-0 p-1 text-text-strong-950 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1",
         className
       )}
       {...props}
@@ -35,7 +35,7 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex min-h-8 cursor-default select-none items-center rounded-lg px-3 py-2 text-sm font-normal leading-5 text-text-sub-600 outline-none transition-colors focus:bg-bg-weak-50 focus:text-text-strong-950 data-[disabled]:pointer-events-none data-[disabled]:text-text-disabled-300",
+      "relative flex min-h-8 cursor-default select-none items-center rounded-lg px-3 py-2 font-sans text-[14px] font-normal leading-5 text-text-sub-600 outline-none transition-colors focus:bg-bg-weak-50 focus:text-text-strong-950 data-[disabled]:pointer-events-none data-[disabled]:text-text-disabled-300",
       inset && "pl-8",
       className
     )}
@@ -53,7 +53,7 @@ const DropdownMenuLabel = React.forwardRef<
   <DropdownMenuPrimitive.Label
     ref={ref}
     className={cn(
-      "px-2 py-1.5 text-xs font-semibold text-text-sub-600",
+      "px-2 py-1.5 font-sans text-[12px] font-bold leading-[1.35] text-text-sub-600",
       inset && "pl-8",
       className
     )}

@@ -36,3 +36,18 @@ coverage/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Local brainstorming / planning artifacts (not committed)
+.superpowers/
+.worktrees/
+
+# Local agent/editor tooling
+.claude/
+.continue/
+
+# Playwright browser profiles (local scraping sessions)
+backend/.playwright-*/
+
+# Local runtime artifacts
+backend/dump.rdb
+backend/tmp/

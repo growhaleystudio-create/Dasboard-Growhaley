@@ -11,6 +11,15 @@ import type {
   SduiComponent,
   TypographyScale,
   ImageRequirement,
+  GwComposition,
+} from '@leads-generator/shared';
+import {
+  GW_ACCENT_CHOICES,
+  GW_BLOB_POSITIONS,
+  GW_COLLAGE_SCATTERS,
+  GW_HEADER_COMPOSITIONS,
+  GW_ORNAMENT_LEVELS,
+  GW_PALETTE_CHOICES,
 } from '@leads-generator/shared';
 import { sanitizeComponent } from './component-sanitizer.js';
 import { getLayoutVariantSet } from '../layout/layout-catalog.js';
@@ -19,84 +28,48 @@ import { layoutFamilyForVariant } from '../../layout-migration.js';
 
 
 const LAYOUT_VARIANT_SET = getLayoutVariantSet();
-const LEGACY_LAYOUT_VARIANT_ALIASES: Readonly<Record<string, SduiSlide['layout_variant_id']>> = {
-  cover_centered: 'cover_centered',
-  cover_editorial_left: 'cover_editorial_left',
-  cover_image_full: 'cover_image_full',
-  text_centered: 'text_centered',
-  text_stack: 'text_stack',
-  split_text_left_image_right: 'split_text_left_image_right',
-  split_image_left_text_right: 'split_image_left_text_right',
-  image_top_text_bottom: 'image_top_text_bottom',
-  text_top_image_bottom: 'text_top_image_bottom',
-  checklist_stack: 'checklist_stack',
-  numbered_steps: 'numbered_steps',
-  quote_focus: 'quote_focus',
-  stat_highlight: 'stat_highlight',
-  big_statement: 'big_statement',
-  cta_centered: 'cta_centered',
-  split_checklist_image: 'split_checklist_image',
-  split_image_checklist: 'split_image_checklist',
-  split_stat_image: 'split_stat_image',
-  image_top_checklist_bottom: 'image_top_checklist_bottom',
-  quote_with_image: 'quote_with_image',
-  header_body_cta: 'header_body_cta',
-  split_header_body_cta: 'split_header_body_cta',
-  cover_checklist: 'cover_checklist',
-  numbered_with_image: 'numbered_with_image',
-  big_stat_with_body: 'big_stat_with_body',
-  two_column_text: 'two_column_text',
-  image_full_caption: 'image_full_caption',
-  quote_stat_combo: 'quote_stat_combo',
-  cover_with_cta: 'cover_with_cta',
-  checklist_with_body: 'checklist_with_body',
-  editorial_feature_spread: 'editorial_feature_spread',
-  magazine_cover_story: 'magazine_cover_story',
-  pullquote_editorial: 'pullquote_editorial',
-  article_column_layout: 'article_column_layout',
-  editorial_image_caption_grid: 'editorial_image_caption_grid',
-  profile_story_layout: 'profile_story_layout',
-  reportage_photo_essay: 'reportage_photo_essay',
-  opinion_big_statement: 'opinion_big_statement',
-  timeline_editorial: 'timeline_editorial',
-  data_editorial: 'data_editorial',
-  editorial_rich_stack: 'editorial_rich_stack',
-  editorial_rich_split: 'editorial_rich_split',
-  feature_cards_grid: 'feature_cards_grid',
-  feature_cards_with_header: 'feature_cards_with_header',
-  comparison_columns: 'comparison_columns',
-  comparison_with_header: 'comparison_with_header',
-  dual_image_comparison: 'dual_image_comparison',
-  product_angle_pair: 'product_angle_pair',
-  use_case_gallery_2up: 'use_case_gallery_2up',
-  mini_gallery_3up: 'mini_gallery_3up',
-  moodboard_grid: 'moodboard_grid',
-  step_visual_sequence: 'step_visual_sequence',
-  problem_solution_visual_pair: 'problem_solution_visual_pair',
-  feature_visual_cards: 'feature_visual_cards',
-  testimonial_with_portrait_and_product: 'testimonial_with_portrait_and_product',
-  case_study_snapshot_grid: 'case_study_snapshot_grid',
-  dos_donts_visual_pair: 'dos_donts_visual_pair',
-  outfit_or_style_board: 'outfit_or_style_board',
-  menu_or_food_combo: 'menu_or_food_combo',
-  real_estate_room_pair: 'real_estate_room_pair',
-  app_screen_flow: 'app_screen_flow',
-  social_proof_wall: 'social_proof_wall',
-  event_moment_grid: 'event_moment_grid',
-  travel_itinerary_grid: 'travel_itinerary_grid',
-  collection_showcase: 'collection_showcase',
-  variant_selector_showcase: 'variant_selector_showcase',
-};
 
+/**
+ * Unknown/legacy layout ids (pre-Growhaley catalogs) normalize to undefined —
+ * the worker's template picker then chooses a gw_* fallback by content.
+ */
 function normalizeLayoutVariantId(layoutVariantId: unknown): SduiSlide['layout_variant_id'] | undefined {
   if (typeof layoutVariantId !== 'string') return undefined;
-  if (LEGACY_LAYOUT_VARIANT_ALIASES[layoutVariantId]) {
-    return LEGACY_LAYOUT_VARIANT_ALIASES[layoutVariantId];
-  }
   if (LAYOUT_VARIANT_SET.has(layoutVariantId)) {
     return layoutVariantId as SduiSlide['layout_variant_id'];
   }
   return undefined;
+}
+
+/**
+ * Whitelists the AI-provided composition object: every field must be one of
+ * the design-system enum values, anything else is dropped. Cross-field brand
+ * rules (bg/accent contrast) are enforced later by the renderer.
+ */
+function sanitizeComposition(raw: unknown): GwComposition | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const r = raw as Record<string, unknown>;
+  const pick = <T extends string>(value: unknown, allowed: readonly T[]): T | undefined =>
+    typeof value === 'string' && (allowed as readonly string[]).includes(value)
+      ? (value as T)
+      : undefined;
+
+  const palette = pick(r.palette, GW_PALETTE_CHOICES);
+  const accent = pick(r.accent, GW_ACCENT_CHOICES);
+  const headerComposition = pick(r.headerComposition, GW_HEADER_COMPOSITIONS);
+  const blob = pick(r.blob, GW_BLOB_POSITIONS);
+  const ornaments = pick(r.ornaments, GW_ORNAMENT_LEVELS);
+  const scatter = pick(r.scatter, GW_COLLAGE_SCATTERS);
+
+  const composition: GwComposition = {
+    ...(palette ? { palette } : {}),
+    ...(accent ? { accent } : {}),
+    ...(headerComposition ? { headerComposition } : {}),
+    ...(blob ? { blob } : {}),
+    ...(ornaments ? { ornaments } : {}),
+    ...(scatter ? { scatter } : {}),
+  };
+  return Object.keys(composition).length > 0 ? composition : undefined;
 }
 
 export function parseSlides(
@@ -135,13 +108,25 @@ export function parseSlides(
       r.typography_scale === 'balanced_classic'
         ? r.typography_scale
         : 'balanced_classic';
-    const layoutVariant = normalizeLayoutVariantId(r.layout_variant_id);
-    const layoutFamily = layoutFamilyForVariant(layoutVariant);
+    let layoutVariant = normalizeLayoutVariantId(r.layout_variant_id);
     const nestedGroups = {
       top_meta: mapGroup('top_meta'),
       core_content: mapGroup('core_content'),
       action_footer: mapGroup('action_footer'),
     };
+
+    // button_cta is reserved for the closing slide: the chrome already draws
+    // an automatic "Swipe" button on every non-last slide, and a stray CTA on
+    // the cover forces the worker to swap it off gw_poster_cover. Drop CTAs
+    // from non-last slides regardless of what the LLM returned.
+    const isLastSlide = i === rawSlides.length - 1;
+    if (!isLastSlide) {
+      (['top_meta', 'core_content', 'action_footer'] as const).forEach((group) => {
+        nestedGroups[group] = nestedGroups[group].filter((c) => c.type !== 'button_cta');
+      });
+      if (layoutVariant === 'gw_poster_cta') layoutVariant = undefined; // re-pick by content
+    }
+    const layoutFamily = layoutFamilyForVariant(layoutVariant);
     const hasImagePlaceholder = (['top_meta', 'core_content', 'action_footer'] as const).some(
       (group) => nestedGroups[group].some((component) => component.type === 'image_placeholder'),
     );
@@ -167,6 +152,10 @@ export function parseSlides(
       ...(r.contentDirection === 'row' || r.contentDirection === 'column'
         ? { contentDirection: r.contentDirection as 'row' | 'column' }
         : {}),
+      ...(() => {
+        const composition = sanitizeComposition(r.composition);
+        return composition ? { composition } : {};
+      })(),
       nested_groups: nestedGroups,
     };
     slides.push(

@@ -23,7 +23,10 @@ import type {
   ConnectorDescriptor,
   ConnectorStatus,
   Lead,
+  LeadAuditAttributes,
+  LeadScoreBreakdown,
   LeadStatus,
+  WhatsAppVerificationStatus,
   Membership,
   MembershipStatus,
   Role,
@@ -48,10 +51,14 @@ export interface LeadRow {
   public_contact: string | null;
   profile_url: string | null;
   location: string | null;
+  whatsapp_url: string | null;
+  whatsapp_number: string | null;
+  whatsapp_verification_status: WhatsAppVerificationStatus;
   matched_keywords: string[] | null;
   status: LeadStatus;
   score: number | null;
   score_state: 'scored' | 'unscored';
+  audit_attributes: LeadAuditAttributes | string | null;
   is_duplicate: boolean;
   duplicate_of: string | null;
   discovered_at: Date | string;
@@ -63,6 +70,22 @@ export interface LeadRow {
   ai_unavailable_reason: AIUnavailableReason | null;
   ai_analyzed_at: Date | string | null;
   created_at: Date | string;
+}
+
+export interface LeadScoreBreakdownRow {
+  lead_id: string;
+  team_id: string;
+  scoring_version: string;
+  has_website: boolean;
+  business_value_score: number;
+  website_need_score: number;
+  reachability_score: number;
+  confidence_score: number;
+  confidence_modifier: number | string;
+  base_score: number;
+  final_score: number;
+  audit_source: 'custom-parser' | null;
+  computed_at: Date | string;
 }
 
 /** Row shape returned by `SELECT … FROM scan_configuration`. */
@@ -167,6 +190,7 @@ export function mapLeadRow(row: LeadRow): Lead {
     teamId: row.team_id,
     matchedKeywords: row.matched_keywords ?? [],
     status: row.status,
+    whatsappVerificationStatus: row.whatsapp_verification_status,
     // `score === null` indicates 'unscored' (R7.8); preserve null explicitly.
     score: row.score === null ? null : Number(row.score),
     scoreState: row.score_state,
@@ -181,6 +205,10 @@ export function mapLeadRow(row: LeadRow): Lead {
   if (row.public_contact !== null) lead.publicContact = row.public_contact;
   if (row.profile_url !== null) lead.profileUrl = row.profile_url;
   if (row.location !== null) lead.location = row.location;
+  if (row.whatsapp_url !== null) lead.whatsappUrl = row.whatsapp_url;
+  if (row.whatsapp_number !== null) lead.whatsappNumber = row.whatsapp_number;
+  const auditAttributes = parseJson<LeadAuditAttributes | null>(row.audit_attributes, null);
+  if (auditAttributes !== null) lead.auditAttributes = auditAttributes;
   if (row.duplicate_of !== null) lead.duplicateOf = row.duplicate_of;
   if (row.acquired_source !== null) lead.acquiredSource = row.acquired_source;
   const acquiredAt = toDate(row.acquired_at);
@@ -286,6 +314,25 @@ export function mapScoringModelRow(row: ScoringModelRow): ScoringModel {
 /**
  * Map a `user_membership` row to a {@link Membership}.
  */
+export function mapLeadScoreBreakdownRow(row: LeadScoreBreakdownRow): LeadScoreBreakdown {
+  const breakdown: LeadScoreBreakdown = {
+    teamId: row.team_id,
+    leadId: row.lead_id,
+    scoringVersion: row.scoring_version,
+    hasWebsite: row.has_website,
+    businessValueScore: Number(row.business_value_score),
+    websiteNeedScore: Number(row.website_need_score),
+    reachabilityScore: Number(row.reachability_score),
+    confidenceScore: Number(row.confidence_score),
+    confidenceModifier: Number(row.confidence_modifier),
+    baseScore: Number(row.base_score),
+    finalScore: Number(row.final_score),
+    computedAt: toDate(row.computed_at),
+  };
+  if (row.audit_source !== null) breakdown.auditSource = row.audit_source;
+  return breakdown;
+}
+
 export function mapMembershipRow(row: MembershipRow): Membership {
   return {
     teamId: row.team_id,
