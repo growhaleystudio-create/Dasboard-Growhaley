@@ -5,12 +5,13 @@ import { TeamAiSettingsRepository } from '../repository/team-ai-settings-reposit
 import { AiCallLogRepository } from '../repository/ai-call-log-repository.js';
 import { DbAuditLog } from '../privacy/audit-log.js';
 import { AiBudgetTracker } from '../ai/ai-budget-tracker.js';
-import { BrandKitRepository } from '../repository/brand-kit-repository.js';
 import { MasterTemplateRepository } from '../repository/master-template-repository.js';
 import { ContentGenerationJobRepository } from '../repository/content-generation-job-repository.js';
 import { ContentGenerationSlideRepository } from '../repository/content-generation-slide-repository.js';
 import { AiCallWrapper } from '../content/ai-call-wrapper.js';
 import { DefaultSduiPlanner } from '../content/sdui-planner/index.js';
+import { DefaultExampleRetriever } from '../content/example-retriever.js';
+import { ApprovedExampleRepository } from '../repository/approved-example-repository.js';
 import { SatoriRenderer } from '../content/satori-renderer.js';
 import { processSduiCarouselJob } from '../content/sdui-carousel-worker.js';
 import { createObjectStorageFromEnv } from '../storage/object-storage.js';
@@ -27,7 +28,7 @@ async function main() {
   const dbPool = getPool();
   const vault = createCredentialVault(env);
   const aiSettingsRepo = new TeamAiSettingsRepository(dbPool);
-  const teamAiSettings = new TeamAiSettingsService(aiSettingsRepo, vault);
+  const teamAiSettings = new TeamAiSettingsService(aiSettingsRepo, vault, env.CENTRAL_AI_TEAM_ID);
   const aiBudget = new AiBudgetTracker({
     settings: aiSettingsRepo,
     callLog: new AiCallLogRepository(dbPool),
@@ -42,7 +43,11 @@ async function main() {
   }
 
   await processSduiCarouselJob({
-    planner: new DefaultSduiPlanner({ wrapper: aiCallWrapper, settings: teamAiSettings }),
+    planner: new DefaultSduiPlanner({
+      wrapper: aiCallWrapper,
+      settings: teamAiSettings,
+      exampleRetriever: new DefaultExampleRetriever(new ApprovedExampleRepository(dbPool)),
+    }),
     renderer: new SatoriRenderer(),
     imageClient: new DefaultBackgroundImageClient({ wrapper: aiCallWrapper, settings: teamAiSettings, urlGuard: new UrlSafetyGuardImpl() }),
     storage: createObjectStorageFromEnv({
@@ -53,7 +58,6 @@ async function main() {
     jobRepo: new ContentGenerationJobRepository(dbPool),
     slideRepo: new ContentGenerationSlideRepository(dbPool),
     masterTemplateRepo: new MasterTemplateRepository(dbPool),
-    brandKitRepo: new BrandKitRepository(dbPool),
     redisUrl: env.REDIS_URL,
   }, { teamId, jobId, actorId: 'dev-manual' });
 

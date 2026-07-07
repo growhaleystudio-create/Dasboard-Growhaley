@@ -3,7 +3,6 @@
 /**
  * Content Generator (Carousel) — clean replacement of the legacy ad-hoc
  * content page. Talks to the new carousel backend:
- *   PUT/GET  /api/teams/:id/content/brand-kit
  *   PUT/GET  /api/teams/:id/content/master-template
  *   POST     /api/teams/:id/content/carousel/generate      -> { jobId, status }
  *   GET      /api/teams/:id/content/carousel/jobs/:jobId    -> JobView
@@ -18,9 +17,10 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Accordion } from '@/components/ui/Accordion';
+import { ChatMessages } from './components/ChatMessages';
 import {
   Sparkles,
-  Palette,
   Images,
   Plus,
   Trash2,
@@ -29,6 +29,7 @@ import {
   Download,
   AlertTriangle,
   ArrowUp,
+  ArrowLeft,
   ChevronRight,
   Save,
   Star,
@@ -49,7 +50,6 @@ import type {
   AspectRatio,
   AppErrorCode,
   BlockType,
-  BrandKit,
   MasterTemplate,
   CarouselWorkflowArtifact,
   ContentConversationContextMessage,
@@ -61,26 +61,25 @@ import type {
 import {
   ASPECT_RATIOS,
   ASPECT_RATIO_CLASS,
-  BRAND_COLOR_PRESETS,
   CLIENT_POLL_CAP_MS,
-  EXTRA_TYPOGRAPHY_ROLE_CONFIG,
+  POLL_FAST_INTERVAL_MS,
+  POLL_FAST_WINDOW_MS,
+  POLL_SLOW_INTERVAL_MS,
   FAILURE_LABEL,
   HEX_RE,
   IMAGE_PREFERENCE_OPTIONS,
   LAYOUT_STYLE_OPTIONS,
-  LOGO_PLACEMENT_OPTIONS,
-  MAX_ASSET_BYTES,
+  PREVIEW_DEBOUNCE_MS,
+  PREVIEW_LABELS,
 } from './content-generator-constants';
 import { BLOCK_TYPES } from './content-generator-types';
+import { SlidePreviewCard } from './components/SlidePreviewCard';
 import {
   contentTagsFromConfig,
   conversationContextFromMessages,
-  createDefaultExtraTypography,
-  extraTypographyFromBrandKit,
   failureDisplay,
   getErrorMessage,
   isHex,
-  parsePositiveInt,
   promptTextFromSlide,
   readFileAsBase64,
   typographyOverrideFromConfig,
@@ -93,9 +92,8 @@ import type {
   ChatMessage,
   ChatSessionCache,
   DraftResponse,
+  DraftPreviewResponse,
   ExampleItem,
-  ExtraTypographyRole,
-  FontDraft,
   GeneratorConfig,
   GeneratorRequestInput,
   GeneratorStage,
@@ -105,7 +103,6 @@ import type {
   ProcessingKind,
   RefMode,
   TypographyOverridePayload,
-  TypographyRoleDraft,
   VisualRef,
 } from './content-generator-types';
 import { useSession } from '@/lib/useSession';
@@ -118,6 +115,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { Switch } from '@/components/ui/Switch';
 
 // ---------------------------------------------------------------------------
 // Page
@@ -134,34 +132,10 @@ export default function ContentGeneratorPage() {
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('generate');
 
-  // -- Brand Kit form state -------------------------------------------------
-  const [logoFile, setLogoFile] = useState<{ base64: string; name: string } | null>(null);
-  const [fonts, setFonts] = useState<FontDraft[]>([]);
-  const [colors, setColors] = useState<string[]>(['#187DB4', '#0A0D14']);
-  const [logoPlacement, setLogoPlacement] = useState<string>('bottom-left');
-  const [logoSizePx, setLogoSizePx] = useState<string>('24');
-  const [pageNumberFormat, setPageNumberFormat] = useState<string>('{current}/{total}');
-  const [siteUrl, setSiteUrl] = useState<string>('');
-  // -- Typography & color roles (Brand Kit v2) ------------------------------
-  const [coverFont, setCoverFont] = useState<string>('');
-  const [headerFont, setHeaderFont] = useState<string>('');
-  const [bodyFont, setBodyFont] = useState<string>('');
-  const [coverSize, setCoverSize] = useState<string>('72');
+  // -- Typography size overrides (per-generation, sent as typographyOverride) --
   const [headerSize, setHeaderSize] = useState<string>('48');
   const [bodySize, setBodySize] = useState<string>('22');
   const [tags, setTags] = useState<string>('');
-  const [headerColor, setHeaderColor] = useState<string>('#1a1d24');
-  const [bodyColor, setBodyColor] = useState<string>('#5b626e');
-  const [highlightColor, setHighlightColor] = useState<string>('#187DB4');
-  const [bgColor, setBgColor] = useState<string>('#F4F3EF');
-  const [paginationColor, setPaginationColor] = useState<string>('#5b626e');
-  const [metaColor, setMetaColor] = useState<string>('#5b626e');
-  const [accentColor, setAccentColor] = useState<string>('#187DB4');
-  const [extraTypography, setExtraTypography] = useState<Record<ExtraTypographyRole, TypographyRoleDraft>>(
-    () => createDefaultExtraTypography(),
-  );
-  const logoInputRef = useRef<HTMLInputElement>(null);
-  const fontInputRef = useRef<HTMLInputElement>(null);
 
   // -- Master template form state -------------------------------------------
   const [allowedBlocks, setAllowedBlocks] = useState<BlockType[]>(['heading', 'body', 'cta']);
@@ -182,6 +156,8 @@ export default function ContentGeneratorPage() {
   // Client-side poll cap: stops the spinner if the API never resolves the job.
   const [clientPollTimedOut, setClientPollTimedOut] = useState(false);
   const pollCapReachedRef = useRef(false);
+  const pollCapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollStartedAtRef = useRef<number | null>(null);
 
   // -- Fase 2: Draft + chat feedback + inline edit + regen ------------------
   // Step: 'idle' | 'draft_ready' | 'done'
@@ -191,6 +167,14 @@ export default function ContentGeneratorPage() {
   const [draftWorkflow, setDraftWorkflow] = useState<CarouselWorkflowArtifact | null>(null);
   const [draftRatio, setDraftRatio] = useState<AspectRatio>('4:5');
   const [chatFeedback, setChatFeedback] = useState<string>('');
+  // Visual layout preview (rendered draft thumbnails, keyed by slide_number).
+  const [previewPngs, setPreviewPngs] = useState<Record<number, string>>({});
+  const [previewAdjusted, setPreviewAdjusted] = useState<Record<number, boolean>>({});
+  const [updatingSlides, setUpdatingSlides] = useState<Set<number>>(new Set());
+  const [previewErrors, setPreviewErrors] = useState<Set<number>>(new Set());
+  const [zoomPng, setZoomPng] = useState<string | null>(null);
+  const previewDebounceRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const previewAbortRef = useRef<Record<number, AbortController>>({});
   // inline edit: { slideIdx → { group → compIdx → text } }
   const [editingCell, setEditingCell] = useState<{ slideIdx: number; group: string; compIdx: number } | null>(null);
   const [editingText, setEditingText] = useState<string>('');
@@ -208,6 +192,7 @@ export default function ContentGeneratorPage() {
   const refInputRef = useRef<HTMLInputElement>(null);
 
   // -- Chat + config UX ------------------------------------------------------
+  const [contentView, setContentView] = useState<'home' | 'chat'>('home');
   const [planningEnabled, setPlanningEnabled] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -216,12 +201,6 @@ export default function ContentGeneratorPage() {
   const [chatSessionLoaded, setChatSessionLoaded] = useState(false);
 
   // -- Queries --------------------------------------------------------------
-  const brandKitQuery = useQuery({
-    queryKey: ['brand-kit', teamId],
-    queryFn: () => fetchApi<BrandKit | null>(`/api/teams/${teamId}/content/brand-kit`),
-    enabled: !!teamId,
-  });
-
   const masterTemplateQuery = useQuery({
     queryKey: ['master-template', teamId],
     queryFn: () => fetchApi<MasterTemplate | null>(`/api/teams/${teamId}/content/master-template`),
@@ -248,23 +227,40 @@ export default function ContentGeneratorPage() {
       const status = query.state.data?.status;
       if (status !== 'pending') return false;
       if (pollCapReachedRef.current) return false;
-      return 2000;
+      const startedAt = pollStartedAtRef.current;
+      const elapsedMs = startedAt === null ? 0 : Date.now() - startedAt;
+      return elapsedMs < POLL_FAST_WINDOW_MS ? POLL_FAST_INTERVAL_MS : POLL_SLOW_INTERVAL_MS;
     },
   });
 
-  // Reset + arm the client poll cap whenever a new job becomes active.
-  React.useEffect(() => {
+  // (Re)arm the client poll cap: clears any previous timer and opens a fresh
+  // full polling window. Used on new jobs and by the "Cek lagi" retry button.
+  const armPollCap = React.useCallback(() => {
+    if (pollCapTimerRef.current) clearTimeout(pollCapTimerRef.current);
     setClientPollTimedOut(false);
     pollCapReachedRef.current = false;
-    if (!activeJobId) return;
-    const timer = setTimeout(() => {
+    pollStartedAtRef.current = Date.now();
+    pollCapTimerRef.current = setTimeout(() => {
       pollCapReachedRef.current = true;
       setClientPollTimedOut(true);
     }, CLIENT_POLL_CAP_MS);
-    return () => clearTimeout(timer);
-  }, [activeJobId]);
+  }, []);
 
-  const brandKit = brandKitQuery.data ?? null;
+  // Reset + arm the client poll cap whenever a new job becomes active.
+  React.useEffect(() => {
+    if (!activeJobId) {
+      if (pollCapTimerRef.current) clearTimeout(pollCapTimerRef.current);
+      setClientPollTimedOut(false);
+      pollCapReachedRef.current = false;
+      pollStartedAtRef.current = null;
+      return;
+    }
+    armPollCap();
+    return () => {
+      if (pollCapTimerRef.current) clearTimeout(pollCapTimerRef.current);
+    };
+  }, [activeJobId, armPollCap]);
+
   const masterTemplate = masterTemplateQuery.data ?? null;
   const job = jobQuery.data ?? null;
 
@@ -282,39 +278,6 @@ export default function ContentGeneratorPage() {
   }, [masterTemplate]);
 
   React.useEffect(() => {
-    if (brandKit?.colors?.length) setColors(brandKit.colors);
-    if (brandKit?.chrome) {
-      setLogoPlacement(brandKit.chrome.logoPlacement);
-      setLogoSizePx(String(brandKit.chrome.logoSizePx ?? 24));
-      setPageNumberFormat(brandKit.chrome.pageNumberFormat);
-      setSiteUrl(brandKit.chrome.siteUrl);
-    }
-    const t = brandKit?.typography;
-    const firstFam = brandKit?.fonts?.[0]?.family ?? '';
-    const secondFam = brandKit?.fonts?.[1]?.family ?? firstFam;
-    setCoverFont(t?.cover?.fontFamily ?? t?.header?.fontFamily ?? firstFam);
-    setHeaderFont(t?.header?.fontFamily ?? firstFam);
-    setBodyFont(t?.body?.fontFamily ?? secondFam);
-    setCoverSize(String(t?.cover?.sizePx ?? t?.header?.sizePx ?? 72));
-    setHeaderSize(String(t?.header?.sizePx ?? 48));
-    setBodySize(String(t?.body?.sizePx ?? 22));
-    if (t) {
-      setHeaderColor(t.header?.color ?? '#1a1d24');
-      setBodyColor(t.body?.color ?? '#5b626e');
-      setHighlightColor(t.highlightColor ?? '#187DB4');
-      setBgColor(t.background ?? '#F4F3EF');
-      setPaginationColor(t.paginationColor ?? '#5b626e');
-      setMetaColor(t.metaTextColor ?? '#5b626e');
-      setAccentColor(t.accent ?? brandKit?.colors?.[0] ?? '#187DB4');
-      setExtraTypography(extraTypographyFromBrandKit(t));
-    } else if (brandKit?.colors?.[0]) {
-      setAccentColor(brandKit.colors[0]);
-      setHighlightColor(brandKit.colors[0]);
-      setExtraTypography(extraTypographyFromBrandKit(undefined));
-    }
-  }, [brandKit]);
-
-  React.useEffect(() => {
     if (!teamId || typeof window === 'undefined' || chatSessionLoaded) return;
     const sessionRaw = window.localStorage.getItem(`content-generator-chat-session:${teamId}`);
     if (!sessionRaw) {
@@ -323,7 +286,10 @@ export default function ContentGeneratorPage() {
     }
     try {
       const parsed = JSON.parse(sessionRaw) as ChatSessionCache;
-      if (Array.isArray(parsed.messages)) {
+      if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+        setChatMessages(parsed.messages.slice(-20));
+        setContentView('chat');
+      } else if (Array.isArray(parsed.messages)) {
         setChatMessages(parsed.messages.slice(-20));
       }
       if (typeof parsed.activePrompt === 'string') {
@@ -357,6 +323,7 @@ export default function ContentGeneratorPage() {
       setChatSessionLoaded(true);
     }
   }, [chatSessionLoaded, teamId]);
+
 
   const currentGeneratorConfig = useMemo<GeneratorConfig>(() => ({
     headerSize,
@@ -406,6 +373,117 @@ export default function ContentGeneratorPage() {
     if (config.layoutStyle !== 'auto') payload.layoutStyle = config.layoutStyle;
     if (config.imagePreference !== 'auto') payload.imagePreference = config.imagePreference;
     return payload;
+  };
+
+  // ---- Visual layout preview (render draft slides to PNG, no image gen) ----
+  const buildPreviewBody = (slides: SduiSlide[], ratio: AspectRatio): Record<string, unknown> => {
+    const body: Record<string, unknown> = { aspectRatio: ratio, slides };
+    const typo = typographyOverrideFromConfig(currentGeneratorConfig);
+    if (typo) body.typographyOverride = typo;
+    return body;
+  };
+
+  const runFullPreview = async (slides: SduiSlide[], ratio: AspectRatio) => {
+    if (slides.length === 0) return;
+    setUpdatingSlides(new Set(slides.map((s) => s.slide_number)));
+    setPreviewErrors(new Set());
+    try {
+      const res = await fetchApi<DraftPreviewResponse>(
+        `/api/teams/${teamId}/content/carousel/draft/preview`,
+        { method: 'POST', body: JSON.stringify(buildPreviewBody(slides, ratio)) },
+      );
+      const pngs: Record<number, string> = {};
+      const adj: Record<number, boolean> = {};
+      for (const item of res.items) {
+        pngs[item.slide_number] = item.png;
+        adj[item.slide_number] = item.adjusted;
+      }
+      setPreviewPngs(pngs);
+      setPreviewAdjusted(adj);
+    } catch {
+      setPreviewErrors(new Set(slides.map((s) => s.slide_number)));
+    } finally {
+      setUpdatingSlides(new Set());
+    }
+  };
+
+  const renderSinglePreview = async (slide: SduiSlide, ratio: AspectRatio) => {
+    const n = slide.slide_number;
+    previewAbortRef.current[n]?.abort();
+    const ctrl = new AbortController();
+    previewAbortRef.current[n] = ctrl;
+    setUpdatingSlides((prev) => new Set(prev).add(n));
+    setPreviewErrors((prev) => {
+      const s = new Set(prev);
+      s.delete(n);
+      return s;
+    });
+    try {
+      const res = await fetchApi<DraftPreviewResponse>(
+        `/api/teams/${teamId}/content/carousel/draft/preview`,
+        { method: 'POST', body: JSON.stringify(buildPreviewBody([slide], ratio)), signal: ctrl.signal },
+      );
+      const item = res.items[0];
+      if (item) {
+        setPreviewPngs((prev) => ({ ...prev, [n]: item.png }));
+        setPreviewAdjusted((prev) => ({ ...prev, [n]: item.adjusted }));
+      }
+    } catch (err) {
+      if (ctrl.signal.aborted || (err as Error)?.name === 'AbortError') return;
+      setPreviewErrors((prev) => new Set(prev).add(n));
+    } finally {
+      setUpdatingSlides((prev) => {
+        const s = new Set(prev);
+        s.delete(n);
+        return s;
+      });
+    }
+  };
+
+  const scheduleSlidePreview = (slide: SduiSlide) => {
+    const n = slide.slide_number;
+    clearTimeout(previewDebounceRef.current[n]);
+    previewDebounceRef.current[n] = setTimeout(() => {
+      void renderSinglePreview(slide, draftRatio);
+    }, PREVIEW_DEBOUNCE_MS);
+  };
+
+  const handleSlideChange = (index: number, next: SduiSlide) => {
+    setDraftSlides((prev) => prev.map((s, i) => (i === index ? next : s)));
+    setDraftWorkflow((current) => (current ? withWorkflowSlide(current, next) : current));
+    scheduleSlidePreview(next);
+  };
+
+  // AI-rewrite a single draft slide, then re-render its preview.
+  const handleSlideAiRegen = async (index: number, feedback: string) => {
+    const n = draftSlides[index]?.slide_number ?? index + 1;
+    setUpdatingSlides((prev) => new Set(prev).add(n));
+    try {
+      const res = await fetchApi<{ slide: SduiSlide }>(
+        `/api/teams/${teamId}/content/carousel/jobs/draft/slides/${index}/regenerate`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt: activePrompt || prompt.trim(),
+            aspectRatio: draftRatio,
+            feedback,
+            totalSlides: draftSlides.length,
+            ...buildGeneratorPayload(),
+          }),
+        },
+      );
+      setDraftSlides((prev) => prev.map((s, i) => (i === index ? res.slide : s)));
+      setDraftWorkflow((current) => (current ? withWorkflowSlide(current, res.slide) : current));
+      await renderSinglePreview(res.slide, draftRatio);
+      toast.success(`Slide ${index + 1} diperbarui`);
+    } catch (e) {
+      setUpdatingSlides((prev) => {
+        const s = new Set(prev);
+        s.delete(n);
+        return s;
+      });
+      toast.error(getErrorMessage(e, `Gagal regen slide ${index + 1}`));
+    }
   };
 
   React.useEffect(() => {
@@ -473,72 +551,8 @@ export default function ContentGeneratorPage() {
   }, [teamId]);
 
   // -- Mutations ------------------------------------------------------------
-  const saveBrandKitMutation = useMutation({
-    mutationFn: () => {
-      if (!logoFile && !brandKit?.logoUrl) throw new Error('Logo PNG wajib diunggah');
-      if (fonts.length === 0 && (brandKit?.fonts.length ?? 0) === 0) {
-        throw new Error('Minimal satu Brand Font wajib diunggah');
-      }
-      const parseSize = (value: string): number | undefined => {
-        const n = Number(value);
-        return Number.isFinite(n) && n > 0 ? Math.round(n) : undefined;
-      };
-      const body: Record<string, unknown> = {
-        fonts: fonts.map((f) => ({
-          base64: f.base64,
-          family: f.family,
-          format: f.format,
-          ...(f.weight !== undefined ? { weight: f.weight } : {}),
-          ...(f.style !== undefined ? { style: f.style } : {}),
-        })),
-        colors,
-        chrome: {
-          logoPlacement,
-          pageNumberFormat,
-          siteUrl,
-          logoSizePx: parsePositiveInt(logoSizePx, 12, 180),
-        },
-        typography: {
-          cover: { fontFamily: coverFont, color: headerColor, sizePx: parseSize(coverSize) },
-          header: { fontFamily: headerFont, color: headerColor, sizePx: parseSize(headerSize) },
-          body: { fontFamily: bodyFont, color: bodyColor, sizePx: parseSize(bodySize) },
-          ...Object.fromEntries(
-            EXTRA_TYPOGRAPHY_ROLE_CONFIG.map((config) => [
-              config.role,
-              {
-                fontFamily: extraTypography[config.role].fontFamily,
-                color: extraTypography[config.role].color,
-                sizePx: parsePositiveInt(extraTypography[config.role].sizePx, 8, 180),
-              },
-            ]),
-          ),
-          highlightColor,
-          background: bgColor,
-          paginationColor,
-          metaTextColor: metaColor,
-          accent: accentColor,
-        },
-      };
-      if (logoFile) {
-        body.logo = { base64: logoFile.base64, contentType: 'image/png' };
-      }
-      return fetchApi<BrandKit>(`/api/teams/${teamId}/content/brand-kit`, {
-        method: 'PUT',
-        body: JSON.stringify(body),
-      });
-    },
-    onSuccess: () => {
-      toast.success('Brand Kit berhasil disimpan');
-      setLogoFile(null);
-      setFonts([]);
-      void queryClient.invalidateQueries({ queryKey: ['brand-kit', teamId] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err, 'Gagal menyimpan Brand Kit')),
-  });
-
   const saveTemplateMutation = useMutation({
     mutationFn: () => {
-      if (!brandKit) throw new Error('Buat Brand Kit terlebih dahulu');
       const limits = Object.entries(textLimits)
         .filter(([blockType, raw]) => allowedBlocks.includes(blockType as BlockType) && raw.trim() !== '')
         .map(([blockType, raw]) => ({ blockType: blockType as BlockType, maxChars: Number(raw) }))
@@ -546,7 +560,6 @@ export default function ContentGeneratorPage() {
       return fetchApi<MasterTemplate>(`/api/teams/${teamId}/content/master-template`, {
         method: 'PUT',
         body: JSON.stringify({
-          brandKitId: brandKit.id,
           allowedBlocks,
           maxSlides: Number(maxSlides),
           textLimits: limits,
@@ -634,6 +647,10 @@ export default function ContentGeneratorPage() {
       setDraftRatio(res.aspectRatio);
       setPhase('draft_ready');
       setChatFeedback('');
+      setPreviewPngs({});
+      setPreviewAdjusted({});
+      setPreviewErrors(new Set());
+      void runFullPreview(res.slides, res.aspectRatio);
       setChatMessages((prev) => [
         ...prev,
         {
@@ -643,7 +660,7 @@ export default function ContentGeneratorPage() {
           createdAt: new Date().toISOString(),
         },
       ]);
-      toast.success('Draft siap — review dan revisi teks sebelum generate');
+      toast.success('Draft siap — atur layout & warna, lalu render final');
     },
     onError: (err) => {
       const message = getErrorMessage(err, 'Gagal membuat draft');
@@ -677,6 +694,10 @@ export default function ContentGeneratorPage() {
       setDraftSlides(res.slides);
       setDraftWorkflow(res.workflow ?? null);
       setChatFeedback('');
+      setPreviewPngs({});
+      setPreviewAdjusted({});
+      setPreviewErrors(new Set());
+      void runFullPreview(res.slides, draftRatio);
       setChatMessages((prev) => [
         ...prev,
         {
@@ -904,54 +925,6 @@ export default function ContentGeneratorPage() {
   });
 
   // -- File handlers --------------------------------------------------------
-  const handleLogoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    if (file.type !== 'image/png') {
-      toast.error('Logo harus berformat PNG');
-      return;
-    }
-    if (file.size > MAX_ASSET_BYTES) {
-      toast.error('Ukuran logo maksimal 5 MB');
-      return;
-    }
-    try {
-      const base64 = await readFileAsBase64(file);
-      setLogoFile({ base64, name: file.name });
-    } catch (err) {
-      toast.error(getErrorMessage(err, 'Gagal membaca file logo'));
-    }
-  };
-
-  const handleFontPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    e.target.value = '';
-    for (const file of files) {
-      const lower = file.name.toLowerCase();
-      const format: 'ttf' | 'otf' | null = lower.endsWith('.ttf')
-        ? 'ttf'
-        : lower.endsWith('.otf')
-          ? 'otf'
-          : null;
-      if (!format) {
-        toast.error(`${file.name} harus .ttf atau .otf`);
-        continue;
-      }
-      if (file.size > MAX_ASSET_BYTES) {
-        toast.error(`${file.name} melebihi 5 MB`);
-        continue;
-      }
-      try {
-        const base64 = await readFileAsBase64(file);
-        const family = file.name.replace(/\.(ttf|otf)$/i, '');
-        setFonts((prev) => [...prev, { base64, family, format, fileName: file.name }]);
-      } catch (err) {
-        toast.error(getErrorMessage(err, `Gagal membaca ${file.name}`));
-      }
-    }
-  };
-
   const toggleBlock = (block: BlockType) =>
     setAllowedBlocks((prev) =>
       prev.includes(block) ? prev.filter((b) => b !== block) : [...prev, block],
@@ -1016,6 +989,23 @@ export default function ContentGeneratorPage() {
     window.localStorage.setItem(`content-generator-history:${teamId}`, JSON.stringify(items.slice(0, 8)));
   };
 
+  const handleNewChat = () => {
+    setChatMessages([]);
+    setPhase('idle');
+    setActiveJobId(null);
+    setDraftSlides([]);
+    setDraftWorkflow(null);
+    setChatFeedback('');
+    setRegenFeedback({});
+    setEditingCell(null);
+    setSelectedPreviewIndex(null);
+    setPreviewFeedback('');
+    setPrompt('');
+    setActivePrompt('');
+    setIsHistoryOpen(false);
+    setContentView('chat');
+  };
+
   const saveCurrentConfig = () => {
     if (!teamId || typeof window === 'undefined') return;
     window.localStorage.setItem(`content-generator-config:${teamId}`, JSON.stringify(currentGeneratorConfig));
@@ -1050,11 +1040,13 @@ export default function ContentGeneratorPage() {
     setSelectedPreviewIndex(null);
     setPreviewFeedback('');
     setPhase('idle');
+    setChatMessages([]);
+    setContentView('chat');
   };
 
   const handleSubmitChat = () => {
     const text = prompt.trim();
-    if (!text || !canGenerate || !readyToGenerate || isGeneratorProcessing) return;
+    if (!text || !canGenerate || isGeneratorProcessing) return;
     const createdAt = new Date().toISOString();
     const submittedConfig = currentGeneratorConfig;
     const conversationContext = conversationContextFromMessages(chatMessages, text);
@@ -1087,6 +1079,7 @@ export default function ContentGeneratorPage() {
     setSelectedPreviewIndex(null);
     setPreviewFeedback('');
     setPhase('idle');
+    setContentView('chat');
     if (planningEnabled) {
       draftMutation.mutate({ prompt: text, config: submittedConfig, conversationContext });
     } else {
@@ -1101,7 +1094,6 @@ export default function ContentGeneratorPage() {
     return available.map((r) => ({ label: r, value: r }));
   }, [masterTemplate]);
 
-  const readyToGenerate = !!brandKit;
   const processingKind: ProcessingKind | null = previewReviseMutation.isPending
     ? 'preview-revise'
     : executeRenderMutation.isPending
@@ -1135,6 +1127,7 @@ export default function ContentGeneratorPage() {
     render: 'Render carousel',
     'slide-revise': 'Merevisi slide',
     'preview-revise': 'Merevisi preview',
+    preview: 'Merender pratinjau',
   };
   const typingLabel = processingKind ? processingLabels[processingKind] : null;
   const selectedPreviewSlide =
@@ -1184,17 +1177,14 @@ export default function ContentGeneratorPage() {
     <div className="flex h-full min-h-0 flex-col">
       <div>
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ActiveTab)} className="w-full">
-          <TabsList className="h-9 w-full max-w-[760px] rounded-[10px] bg-bg-weak-50 p-1">
-            <TabsTrigger value="generate" className="flex-1 gap-1.5 rounded-md px-3 py-1.5">
+          <TabsList className="w-full max-w-[760px]">
+            <TabsTrigger value="generate" className="flex-1 gap-1.5">
               <Sparkles size={14} /> Generate
             </TabsTrigger>
-            <TabsTrigger value="brand" className="flex-1 gap-1.5 rounded-md px-3 py-1.5">
-              <Palette size={14} /> Brand Kit
-            </TabsTrigger>
-            <TabsTrigger value="references" className="flex-1 gap-1.5 rounded-md px-3 py-1.5">
+            <TabsTrigger value="references" className="flex-1 gap-1.5">
               <Library size={14} /> Referensi
             </TabsTrigger>
-            <TabsTrigger value="examples" className="flex-1 gap-1.5 rounded-md px-3 py-1.5">
+            <TabsTrigger value="examples" className="flex-1 gap-1.5">
               <History size={14} /> History
             </TabsTrigger>
           </TabsList>
@@ -1205,12 +1195,33 @@ export default function ContentGeneratorPage() {
 	        renderGenerateTab()
 	      ) : (
 	        <div className="min-h-0 flex-1 overflow-y-auto pb-1 pt-6">
-	          {activeTab === 'brand' && renderBrandTab()}
 	          {activeTab === 'references' && renderReferencesTab()}
 	          {activeTab === 'examples' && renderExamplesTab()}
 	        </div>
 	      )}
 	      {renderPreviewModal()}
+      {zoomPng && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+          onClick={() => setZoomPng(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zoomPng}
+            alt="Pratinjau slide"
+            className="max-h-[90vh] max-w-[90vw] rounded-panel object-contain shadow-panel"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setZoomPng(null)}
+            className="absolute right-5 top-5 rounded-full bg-white/90 p-2 text-text-strong-950 hover:bg-white"
+            aria-label="Tutup"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
 	    </div>
 	  );
 
@@ -1218,26 +1229,98 @@ export default function ContentGeneratorPage() {
   // Tab renderers (closures over component state)
   // =======================================================================
 
-  function renderSetupWarning() {
-    if (brandKitQuery.isLoading) return null;
-    if (brandKit) return null;
+  function renderHomeScreen() {
+    const hasHistory = chatHistory.length > 0;
+    const formatRelativeTime = (isoString: string) => {
+      const diff = Date.now() - new Date(isoString).getTime();
+      const mins = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+      if (mins < 1) return 'Baru saja';
+      if (mins < 60) return `${mins} menit lalu`;
+      if (hours < 24) return `${hours} jam lalu`;
+      return `${days} hari lalu`;
+    };
+
     return (
-      <div className="flex items-start gap-3 rounded-panel border border-state-warning-border bg-bg-white-0 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
-        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-state-warning-base" />
-        <div className="text-sm text-text-sub-600">
-          <p className="font-medium">Lengkapi setup dulu</p>
-          <p className="mt-0.5">
-            Brand Kit belum dikonfigurasi. Carousel bisa di-generate setelah logo, font, warna, dan chrome brand siap.
-          </p>
+      <div className="flex flex-col md:flex-row gap-5 md:h-[calc(100vh-140px)] md:min-h-[640px] pt-6 min-w-0">
+        <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-10 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-8 shadow-none min-w-0">
+          {/* Hero */}
+          <div className="flex flex-col items-center text-center gap-4 max-w-[520px]">
+            <div className="flex size-16 items-center justify-center rounded-2xl bg-alpha-primary-10 text-primary-base shadow-sm">
+              <Sparkles size={30} />
+            </div>
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight text-text-strong-950">Content Generator</h2>
+              <p className="mt-2 text-sm leading-6 text-text-sub-600">
+                Buat konten carousel berbasis Brand Kit dengan panduan AI. Tulis ide, dan AI akan merencanakan, menulis, dan merender slide-nya.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="primary"
+              size="lg"
+              disabled={!canGenerate}
+              leftIcon={<Plus size={18} />}
+              onClick={handleNewChat}
+              className="w-full max-w-[280px]"
+            >
+              New Chat
+            </Button>
+          </div>
+
+          {/* History Section */}
+          {hasHistory && (
+            <div className="w-full max-w-[640px] flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <History size={14} className="text-text-soft-400" />
+                <p className="text-xs font-semibold uppercase tracking-wider text-text-soft-400">Sesi Sebelumnya</p>
+              </div>
+              <div className="flex flex-col gap-2">
+                {chatHistory.slice(0, 6).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => applyHistoryItem(item)}
+                    className="group flex items-center gap-4 rounded-panel border border-stroke-soft-200 bg-bg-white-0 px-4 py-3 text-left transition-all hover:border-primary-base hover:bg-alpha-primary-10/30 hover:shadow-sm"
+                  >
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-bg-weak-50 text-text-sub-600 group-hover:bg-bg-white-0 group-hover:text-primary-base transition-colors">
+                      <MessageSquare size={16} />
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <p className="truncate text-sm font-medium text-text-strong-950">{item.title}</p>
+                      <p className="text-xs text-text-soft-400">
+                        {formatRelativeTime(item.createdAt)}
+                        {' · '}{item.config.aspectRatio}
+                        {item.config.slideCount ? ` · ${item.config.slideCount} slide` : ''}
+                        {item.planning ? ' · Planning' : ''}
+                      </p>
+                    </div>
+                    <ChevronRight size={16} className="shrink-0 text-text-soft-400 group-hover:text-primary-base transition-colors" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!hasHistory && (
+            <div className="flex flex-col items-center gap-2 text-center">
+              <p className="text-sm text-text-soft-400">Belum ada sesi sebelumnya.</p>
+              <p className="text-xs text-text-soft-400">Mulai sesi pertamamu dengan klik "New Chat" di atas.</p>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
   function renderGenerateTab() {
+    // --- Route to home screen if not in chat view ---
+    if (contentView === 'home') return renderHomeScreen();
+
     const maxSlidesAllowed = masterTemplate?.maxSlides ?? 7;
     const displayedSlideCount = slideCount.trim() || String(Math.min(5, maxSlidesAllowed));
-    const canSubmitPrompt = canGenerate && readyToGenerate && promptLen > 0 && !isGeneratorProcessing;
+    const canSubmitPrompt = canGenerate && promptLen > 0 && !isGeneratorProcessing;
     const configLocked = !canGenerate || isGeneratorProcessing;
     const promptDisabled = !canGenerate || isGeneratorProcessing;
     const promptPlaceholder = isGeneratorProcessing
@@ -1270,32 +1353,32 @@ export default function ContentGeneratorPage() {
       disabled = false,
     ) => (
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium leading-5 text-text-sub-600">{label}</label>
-        <div className="flex h-9 items-center justify-between rounded-lg border border-stroke-soft-200 bg-bg-white-0 p-1 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
+        <label className="text-xs font-semibold text-text-soft-400 uppercase tracking-wider">{label}</label>
+        <div className="flex h-10 items-center justify-between rounded-ui border border-stroke-soft-200 bg-bg-white-0 p-1 shadow-none">
           <button
             type="button"
             disabled={disabled}
-            className="flex size-7 items-center justify-center rounded-md text-text-sub-600 hover:bg-bg-weak-50 disabled:text-text-disabled-300"
+            className="flex size-8 items-center justify-center rounded-lg text-text-sub-600 hover:bg-bg-weak-50 active:bg-bg-weak-100 disabled:text-text-disabled-300 transition-all"
             onClick={() => setNumberValue(value, setter, -1, min, max)}
             aria-label={`Decrease ${label}`}
           >
-            <Minus size={16} />
+            <Minus size={14} />
           </button>
           <input
             value={value}
             onChange={(event) => setter(event.target.value)}
             disabled={disabled}
             inputMode="numeric"
-            className="min-w-0 flex-1 bg-transparent text-center text-sm leading-5 text-text-soft-400 outline-none disabled:text-text-disabled-300"
+            className="min-w-0 flex-1 bg-transparent text-center text-sm font-semibold text-text-strong-950 outline-none disabled:text-text-disabled-300"
           />
           <button
             type="button"
             disabled={disabled}
-            className="flex size-7 items-center justify-center rounded-md text-text-sub-600 hover:bg-bg-weak-50 disabled:text-text-disabled-300"
+            className="flex size-8 items-center justify-center rounded-lg text-text-sub-600 hover:bg-bg-weak-50 active:bg-bg-weak-100 disabled:text-text-disabled-300 transition-all"
             onClick={() => setNumberValue(value, setter, 1, min, max)}
             aria-label={`Increase ${label}`}
           >
-            <Plus size={16} />
+            <Plus size={14} />
           </button>
         </div>
       </div>
@@ -1311,7 +1394,7 @@ export default function ContentGeneratorPage() {
       const isWelcome = variant === 'welcome';
       return (
         <div
-          className={`${isWelcome ? 'w-full rounded-[24px] p-4' : 'rounded-[20px] p-3'} border bg-bg-white-0 shadow-[0px_1px_2px_rgba(10,13,20,0.03)] transition-all ${
+          className={`${isWelcome ? 'w-full rounded-[24px] p-4' : 'rounded-[20px] p-3'} border bg-bg-white-0 shadow-none transition-all ${
             isPromptFocused && !promptDisabled
               ? 'border-primary-base ring-2 ring-primary-base/20'
               : 'border-stroke-soft-200'
@@ -1325,10 +1408,6 @@ export default function ContentGeneratorPage() {
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
-                if (!readyToGenerate && promptLen > 0) {
-                  toast.error('Lengkapi Brand Kit dulu sebelum generate');
-                  return;
-                }
                 handleSubmitChat();
               }
             }}
@@ -1338,448 +1417,334 @@ export default function ContentGeneratorPage() {
             className={`${isWelcome ? 'min-h-[104px]' : 'min-h-[76px]'} w-full resize-none bg-transparent font-inter text-[14px] font-normal leading-5 text-text-strong-950 outline-none placeholder:text-text-soft-400 disabled:cursor-not-allowed disabled:text-text-disabled-300 disabled:placeholder:text-text-disabled-300`}
           />
           <div className="mt-3 flex items-center gap-2 border-t border-stroke-soft-200 pt-3">
-            <div className="flex flex-1 items-center gap-2 text-[15px] leading-6 text-text-soft-400">
-              <button
-                type="button"
+            <div className="flex flex-1 items-center gap-2.5 text-[14px] leading-6 text-text-soft-400">
+              <Switch
+                checked={planningEnabled}
+                onCheckedChange={setPlanningEnabled}
                 disabled={configLocked}
-                className={`relative h-5 w-8 rounded-full transition-colors disabled:opacity-60 ${
-                  planningEnabled ? 'bg-primary-accent' : 'bg-bg-weak-50'
-                }`}
-                onClick={() => setPlanningEnabled((current) => !current)}
-                aria-label="Toggle planning"
-              >
-                <span
-                  className={`absolute top-1 size-3 rounded-full bg-bg-white-0 shadow-[0px_1px_2px_rgba(10,13,20,0.12)] transition-all ${
-                    planningEnabled ? 'left-[16px]' : 'left-1'
-                  }`}
-                />
-              </button>
-              <span>Planning</span>
+              />
+              <span>Planning Mode</span>
             </div>
             <span className="shrink-0 text-xs leading-4 text-text-soft-400">{promptLen}/2000</span>
-            <button
+            <Button
               type="button"
+              variant="icon"
+              size="icon"
               disabled={!canSubmitPrompt}
-              className="flex size-8 items-center justify-center rounded-ui border border-stroke-soft-200 bg-bg-white-0 text-text-sub-600 transition-all hover:bg-bg-weak-50 hover:text-text-strong-950 disabled:cursor-not-allowed disabled:bg-bg-weak-50 disabled:text-text-disabled-300"
+              className="shrink-0"
               onClick={handleSubmitChat}
               aria-label="Send prompt"
             >
               {isGeneratorProcessing ? <Loader2 className="animate-spin" size={18} /> : <ArrowUp size={18} />}
-            </button>
+            </Button>
           </div>
         </div>
       );
     };
 
     return (
-      <div className="flex min-h-0 flex-1 pt-6">
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 rounded-panel bg-stroke-soft-200 p-4 lg:min-h-[640px] lg:grid-cols-[minmax(0,1fr)_235px] xl:min-h-[681px]">
-          <div className="flex min-h-0 flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="relative w-full max-w-[184px]">
-                <button
-                  type="button"
-                  disabled={isGeneratorProcessing}
-                  className="flex h-9 w-full items-center gap-2 rounded-ui border border-stroke-soft-200 bg-bg-white-0 px-2.5 text-sm text-text-strong-950 shadow-[0px_1px_2px_rgba(10,13,20,0.03)] transition-all hover:bg-bg-weak-50 disabled:cursor-not-allowed disabled:bg-bg-weak-50 disabled:text-text-disabled-300"
-                  onClick={() => setIsHistoryOpen((current) => !current)}
-                >
-                  <History size={16} className="text-text-sub-600" />
-                  <span className="min-w-0 flex-1 truncate">History</span>
-                  <ChevronRight size={16} className={`text-text-sub-600 transition-transform ${isHistoryOpen ? '-rotate-90' : 'rotate-90'}`} />
-                </button>
-                {isHistoryOpen && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-1 shadow-card">
-                    {chatHistory.length === 0 ? (
-                      <p className="px-3 py-2 text-xs text-text-soft-400">Belum ada chat.</p>
-                    ) : (
-                      chatHistory.slice(0, 5).map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          disabled={isGeneratorProcessing}
-                          className="flex w-full flex-col gap-0.5 rounded-ui px-2.5 py-2 text-left transition-colors hover:bg-bg-weak-50 disabled:cursor-not-allowed disabled:text-text-disabled-300"
-                          onClick={() => applyHistoryItem(item)}
-                        >
-                          <span className="w-full truncate text-sm font-medium text-text-strong-950">{item.title}</span>
-                          <span className="text-xs text-text-soft-400">
-                            {item.planning ? 'Planning on' : 'Planning off'} · {item.config.aspectRatio} · {item.config.slideCount} slide · {LAYOUT_STYLE_OPTIONS.find((option) => option.value === item.config.layoutStyle)?.label ?? 'Auto'}
-                          </span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-              <Badge
-                variant={generatorStage === 'processing' ? 'warning' : generatorStage === 'filled' ? 'success' : 'active'}
-                showDot
+      <div className="flex flex-col md:flex-row gap-5 md:h-[calc(100vh-140px)] md:min-h-[640px] pt-6 min-w-0">
+        <div className="flex flex-1 min-h-0 flex-col gap-4 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-5 shadow-none min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stroke-soft-200 pb-3 shrink-0">
+            {/* Back button */}
+            <button
+              type="button"
+              onClick={() => setContentView('home')}
+              disabled={isGeneratorProcessing}
+              className="flex items-center gap-1.5 text-sm font-medium text-text-sub-600 hover:text-text-strong-950 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+            >
+              <ArrowLeft size={16} />
+              Home
+            </button>
+            <div className="relative">
+              <Button
+                type="button"
+                variant="outline"
+                size="md"
+                disabled={isGeneratorProcessing}
+                className="w-full justify-between"
+                onClick={() => setIsHistoryOpen((current) => !current)}
+                leftIcon={<History size={16} className="text-text-sub-600" />}
+                rightIcon={
+                  <ChevronRight
+                    size={16}
+                    className={`text-text-sub-600 transition-transform ${isHistoryOpen ? '-rotate-90' : 'rotate-90'}`}
+                  />
+                }
               >
-                {generatorStageLabel[generatorStage]}
-              </Badge>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-visible md:overflow-y-auto">
-              <div className="flex min-h-full flex-col gap-4 pb-3">
-                {renderSetupWarning()}
-
-                {(chatMessages.length > 0 || typingLabel) && (
-                  <div className="flex flex-col gap-3">
-                    {chatMessages.map((message) => (
-                      <div
-                        key={message.id}
-                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                History
+              </Button>
+              {isHistoryOpen && (
+                <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-1 shadow-card">
+                  {chatHistory.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-text-soft-400">Belum ada chat.</p>
+                  ) : (
+                    chatHistory.slice(0, 5).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        disabled={isGeneratorProcessing}
+                        className="flex w-full flex-col gap-0.5 rounded-ui px-2.5 py-2 text-left transition-colors hover:bg-bg-weak-50 disabled:cursor-not-allowed disabled:text-text-disabled-300"
+                        onClick={() => applyHistoryItem(item)}
                       >
-                        <div
-                          className={`max-w-[78%] rounded-panel px-4 py-3 text-sm leading-5 shadow-[0px_1px_2px_rgba(10,13,20,0.03)] ${
-                            message.role === 'user'
-                              ? 'bg-primary-accent text-bg-white-0'
-                              : 'border border-stroke-soft-200 bg-bg-white-0 text-text-sub-600'
-                          }`}
-                        >
-                          {message.text}
-                        </div>
-                      </div>
+                        <span className="w-full truncate text-sm font-medium text-text-strong-950">{item.title}</span>
+                        <span className="text-xs text-text-soft-400">
+                          {item.planning ? 'Planning on' : 'Planning off'} · {item.config.aspectRatio} · {item.config.slideCount} slide · {LAYOUT_STYLE_OPTIONS.find((option) => option.value === item.config.layoutStyle)?.label ?? 'Auto'}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="flex flex-col gap-5 pb-3">
+              {(chatMessages.length > 0 || typingLabel) && (
+                <ChatMessages messages={chatMessages} typingLabel={typingLabel} />
+              )}
+
+              {isFirstTime && (
+                <div className="flex flex-1 flex-col items-center justify-center gap-6 py-6 text-center">
+                  <div className="flex size-16 items-center justify-center rounded-full bg-alpha-primary-10 text-primary-base">
+                    <Sparkles size={30} />
+                  </div>
+                  <div className="max-w-[560px]">
+                    <h2 className="text-[26px] font-semibold leading-[1.1] text-text-strong-950">
+                      Start a new content session
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-text-sub-600">
+                      Tulis arah konten, target audience, atau goal campaign. Chat di window ini disimpan dan ikut jadi context AI.
+                    </p>
+                  </div>
+                  <div className="grid w-full max-w-[760px] gap-3 md:grid-cols-3">
+                    {promptSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        disabled={promptDisabled}
+                        onClick={() => setPrompt(suggestion)}
+                        className="rounded-panel border border-stroke-soft-200 bg-bg-weak-50 p-4 text-left text-sm leading-6 text-text-sub-600 transition-colors hover:border-primary-base hover:bg-bg-white-0 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {suggestion}
+                      </button>
                     ))}
-                    {typingLabel && (
-                      <div className="flex justify-start">
-                        <div className="flex max-w-[78%] items-center gap-2 rounded-panel border border-stroke-soft-200 bg-bg-white-0 px-4 py-3 text-sm leading-5 text-text-sub-600 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
-                          <span className="shrink-0">{typingLabel}</span>
-                          <span className="flex items-center gap-1" aria-label="AI sedang typing">
-                            {[0, 1, 2].map((dot) => (
-                              <span
-                                key={dot}
-                                className="size-1.5 rounded-full bg-text-soft-400 animate-bounce"
-                                style={{ animationDelay: `${dot * 120}ms` }}
-                              />
-                            ))}
-                          </span>
-                        </div>
-                      </div>
-                    )}
                   </div>
-                )}
-
-                {isFirstTime && (
-                  <div className="flex min-h-[440px] flex-1 flex-col items-center justify-center gap-6 rounded-panel border border-stroke-soft-200 bg-bg-white-0 px-6 py-10 text-center">
-                    <div className="flex size-16 items-center justify-center rounded-full bg-alpha-primary-10 text-primary-base">
-                      <Sparkles size={30} />
-                    </div>
-                    <div className="max-w-[560px]">
-                      <h2 className="text-[28px] font-semibold leading-[1.1] text-text-strong-950">
-                        Start a new content session
-                      </h2>
-                      <p className="mt-2 text-sm leading-6 text-text-sub-600">
-                        Tulis arah konten, target audience, atau goal campaign. Chat di window ini disimpan dan ikut jadi context AI.
-                      </p>
-                    </div>
-                    <div className="grid w-full max-w-[860px] gap-3 md:grid-cols-3">
-                      {promptSuggestions.map((suggestion) => (
-                        <button
-                          key={suggestion}
-                          type="button"
-                          disabled={promptDisabled}
-                          onClick={() => setPrompt(suggestion)}
-                          className="min-h-[92px] rounded-panel border border-stroke-soft-200 bg-bg-weak-50 p-4 text-left text-sm leading-6 text-text-sub-600 transition-colors hover:border-primary-base hover:bg-bg-white-0 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {suggestion}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="w-full max-w-[760px]">
-                      {renderPromptComposer('welcome')}
-                    </div>
+                  <div className="w-full max-w-[760px]">
+                    {renderPromptComposer('welcome')}
                   </div>
-                )}
+                </div>
+              )}
 
-                {activeJobId && renderJobPanel()}
+              {activeJobId && renderJobPanel()}
 
-                {phase === 'draft_ready' && draftSlides.length > 0 && (
-                  <div className="flex flex-col gap-3">
-                    {renderWorkflowPanel(draftWorkflow)}
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-text-strong-950">Review Draft Konten</p>
-                      <Badge variant="warning">{draftSlides.length} slide</Badge>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-                      {draftSlides.map((slide, si) => (
-                        <div key={si} className="rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-3 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
-                          <div className="mb-3 flex items-center gap-2">
-                            <span className="rounded-full bg-primary-base px-2 py-0.5 text-[11px] font-semibold text-bg-white-0">
-                              {slide.slide_type === 'cover' ? 'COVER' : `SLIDE ${si + 1}`}
-                            </span>
-                            <span className="truncate text-xs text-text-soft-400">
-                              {(slide.layout_variant_id ?? slide.container_layout).replaceAll('_', ' ')}
-                            </span>
-                            {slide.layout_family && (
-                              <span className="rounded-full bg-bg-weak-50 px-2 py-0.5 text-[10px] font-semibold text-text-sub-600">
-                                {slide.layout_family.replaceAll('_', ' ')}
-                              </span>
-                            )}
-                            {slide.image_requirement && (
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                  slide.image_requirement === 'required'
-                                    ? 'bg-alpha-primary-10 text-primary-base'
-                                    : slide.image_requirement === 'optional'
-                                      ? 'bg-bg-weak-50 text-state-warning-base'
-                                      : 'bg-bg-weak-50 text-text-soft-400'
-                                }`}
-                              >
-                                image {slide.image_requirement}
-                              </span>
-                            )}
-                          </div>
-                          {(['top_meta', 'core_content', 'action_footer'] as const).map((group) => {
-                            const comps = slide.nested_groups[group];
-                            if (!comps || comps.length === 0) return null;
-                            return (
-                              <div key={group} className="mb-2">
-                                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-text-soft-400">{group.replace('_', ' ')}</p>
-                                {comps.map((comp, ci) => {
-                                  const isEditing = editingCell?.slideIdx === si && editingCell.group === group && editingCell.compIdx === ci;
-                                  const hasText = Boolean(comp.text ?? comp.label ?? (comp.items?.length ? comp.items : undefined));
-                                  return (
-                                    <div key={ci} className="group flex items-start gap-2 rounded-ui p-1.5 hover:bg-bg-weak-50">
-                                      <span className="mt-0.5 shrink-0 rounded bg-bg-weak-50 px-1 py-0.5 text-[10px] font-semibold uppercase text-text-soft-400">{comp.type}</span>
-                                      <div className="min-w-0 flex-1">
-                                        {isEditing ? (
-                                          <div className="flex items-center gap-1">
-                                            <input
-                                              autoFocus
-                                              className="min-w-0 flex-1 rounded-ui border border-primary-base bg-bg-white-0 px-2 py-1 text-sm text-text-strong-950 outline-none ring-2 ring-primary-base/20"
-                                              value={editingText}
-                                              onChange={(event) => setEditingText(event.target.value)}
-                                              onKeyDown={(event) => {
-                                                if (event.key === 'Enter') commitEdit();
-                                                if (event.key === 'Escape') setEditingCell(null);
-                                              }}
-                                            />
-                                            <button onClick={commitEdit} className="text-state-success-base hover:text-state-success-dark" aria-label="Save edit"><Check size={14} /></button>
-                                          </div>
-                                        ) : (
-                                          <div className="flex items-start gap-1">
-                                            <span className="min-w-0 flex-1 break-words text-sm leading-5 text-text-sub-600">
-                                              {comp.text ?? comp.label ?? (comp.items ? comp.items.join(' · ') : comp.image_object_context ?? '-')}
-                                            </span>
-                                            {hasText && comp.type !== 'image_placeholder' && comp.type !== 'button_cta' && (
-                                              <button
-                                                className="mt-0.5 shrink-0 text-text-soft-400 opacity-0 group-hover:opacity-100 hover:text-primary-base"
-                                                onClick={() => startEdit(si, group, ci, comp.text ?? comp.label ?? comp.items?.join('\n') ?? '')}
-                                                aria-label="Edit text"
-                                              >
-                                                <Pencil size={12} />
-                                              </button>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })}
-                          <div className="mt-3 flex items-center gap-2 border-t border-stroke-soft-200 pt-3">
-	                            <input
-	                              className="min-w-0 flex-1 rounded-ui border border-stroke-soft-200 bg-bg-white-0 px-3 py-1.5 text-sm text-text-strong-950 outline-none transition-all placeholder:text-text-soft-400 focus:border-primary-base focus:ring-2 focus:ring-primary-base/20 disabled:cursor-not-allowed disabled:bg-bg-weak-50 disabled:text-text-disabled-300"
-	                              placeholder={`Arahan regen slide ${si + 1}`}
-	                              value={regenFeedback[si] ?? ''}
-	                              onChange={(event) => setRegenFeedback((prev) => ({ ...prev, [si]: event.target.value }))}
-	                              onKeyDown={(event) => { if (event.key === 'Enter') void regenSlideMutation(si); }}
-	                              disabled={isGeneratorProcessing}
-	                            />
-	                            <button
-	                              className="flex items-center gap-1 rounded-ui border border-stroke-soft-200 bg-bg-white-0 px-2 py-1.5 text-xs text-text-sub-600 transition-all hover:border-primary-base hover:text-primary-base disabled:cursor-not-allowed disabled:bg-bg-weak-50 disabled:text-text-disabled-300"
-	                              disabled={isGeneratorProcessing}
-	                              onClick={() => void regenSlideMutation(si)}
-	                            >
-                              {regenning.has(si) ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
-                              Regen
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
-                      <p className="mb-2 text-sm font-medium text-text-strong-950">Revisi via Chat</p>
-	                      <Textarea
-	                        value={chatFeedback}
-	                        onChange={(event) => setChatFeedback(event.target.value)}
-	                        placeholder="Contoh: ubah nada semua slide jadi lebih formal"
-	                        className="h-20 resize-none"
-	                        disabled={isGeneratorProcessing}
-	                      />
-	                      <div className="mt-3 flex justify-end gap-2">
-	                        <Button
-	                          variant="secondary"
-	                          disabled={chatFeedback.trim().length < 3 || isGeneratorProcessing}
+              {phase === 'draft_ready' && draftSlides.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  {renderWorkflowPanel(draftWorkflow)}
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-text-strong-950">Review Draft Konten</p>
+                    <Badge variant="warning">{draftSlides.length} slide</Badge>
+                  </div>
+                  <div className="mb-3">
+                    <p className="text-sm font-semibold text-text-strong-950">{PREVIEW_LABELS.title}</p>
+                    <p className="text-xs text-text-soft-400">{PREVIEW_LABELS.subtitle}</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {draftSlides.map((slide, si) => (
+                      <SlidePreviewCard
+                        key={si}
+                        slide={slide}
+                        index={si}
+                        ratio={draftRatio}
+                        previewPng={previewPngs[slide.slide_number]}
+                        updating={updatingSlides.has(slide.slide_number)}
+                        adjusted={previewAdjusted[slide.slide_number] ?? false}
+                        error={previewErrors.has(slide.slide_number)}
+                        disabled={isGeneratorProcessing}
+                        onChange={(next) => handleSlideChange(si, next)}
+                        onZoom={(png) => setZoomPng(png)}
+                        onAiRegen={(feedback) => void handleSlideAiRegen(si, feedback)}
+                        onRetry={() => void renderSinglePreview(slide, draftRatio)}
+                      />
+                    ))}
+                  </div>
+                  <div className="rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-none">
+                    <p className="mb-2 text-sm font-medium text-text-strong-950">Revisi via Chat</p>
+                    <Textarea
+                      value={chatFeedback}
+                      onChange={(event) => setChatFeedback(event.target.value)}
+                      placeholder="Contoh: ubah nada semua slide jadi lebih formal"
+                      className="h-20 resize-none"
+                      disabled={isGeneratorProcessing}
+                    />
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[11px] text-text-soft-400">{PREVIEW_LABELS.draftNote}</span>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          disabled={chatFeedback.trim().length < 3 || isGeneratorProcessing}
                           leftIcon={reviseMutation.isPending ? <Loader2 className="animate-spin" size={14} /> : <MessageSquare size={14} />}
                           onClick={() => reviseMutation.mutate(chatFeedback.trim())}
                         >
                           {reviseMutation.isPending ? 'Merevisi' : 'Kirim Revisi'}
                         </Button>
-	                        <Button
-	                          variant="primary"
-	                          disabled={isGeneratorProcessing}
+                        <Button
+                          variant="primary"
+                          disabled={isGeneratorProcessing}
                           leftIcon={executeRenderMutation.isPending ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
                           onClick={() => executeRenderMutation.mutate()}
                         >
-                          {executeRenderMutation.isPending ? 'Mengirim' : 'Approve & Render'}
+                          {executeRenderMutation.isPending ? 'Mengirim' : PREVIEW_LABELS.renderFinal}
                         </Button>
                       </div>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
-
-            {!isFirstTime && renderPromptComposer('standard')}
-            {!canGenerate && (
-              <p className="text-xs text-text-soft-400">
-                Peran Viewer hanya dapat melihat. Hubungi Admin untuk men-generate konten.
-              </p>
-            )}
           </div>
 
-          <aside className="flex min-h-0 flex-col justify-between gap-5 overflow-visible rounded-[20px] bg-bg-white-0 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)] md:overflow-y-auto">
+          {!isFirstTime && (
+            <div className="shrink-0 border-t border-stroke-soft-200 pt-3">
+              {renderPromptComposer('standard')}
+              {!canGenerate && (
+                <p className="mt-2 text-xs text-text-soft-400">
+                  Peran Viewer hanya dapat melihat. Hubungi Admin untuk men-generate konten.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <aside className="flex w-full md:w-[260px] lg:w-[280px] min-h-0 shrink-0 flex-col justify-between gap-5 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-5 shadow-none overflow-y-auto">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-text-strong-950">Config</p>
+              <p className="text-xs leading-4 text-text-sub-600">Pengaturan generate</p>
+            </div>
             <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-medium leading-5 text-text-strong-950">Config</p>
-                <p className="text-xs leading-4 text-text-sub-600">Pengaturan generate</p>
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-semibold text-text-strong-950">Text Size</p>
+                {renderCounter('Header', headerSize, setHeaderSize, 12, 180, configLocked)}
+                {renderCounter('Body', bodySize, setBodySize, 8, 96, configLocked)}
               </div>
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <p className="text-sm font-medium leading-5 text-text-strong-950">Text Size</p>
-                  {renderCounter('Header', headerSize, setHeaderSize, 12, 180, configLocked)}
-                  {renderCounter('Body', bodySize, setBodySize, 8, 96, configLocked)}
+              <div className="h-px bg-stroke-soft-200" />
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-semibold text-text-strong-950">Output</p>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium leading-5 text-text-sub-600">Aspek Rasio</label>
+                  <Select
+                    value={genRatio}
+                    onChange={(event) => setGenRatio(event.target.value as AspectRatio)}
+                    options={generateRatioOptions}
+                    disabled={configLocked}
+                  />
                 </div>
-                <div className="h-px bg-stroke-soft-200" />
-                <div className="flex flex-col gap-2">
-                  <p className="text-sm font-medium leading-5 text-text-strong-950">Output</p>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium leading-5 text-text-sub-600">Aspek Rasio</label>
-                    <Select
-                      value={genRatio}
-                      onChange={(event) => setGenRatio(event.target.value as AspectRatio)}
-                      options={generateRatioOptions}
-                      disabled={configLocked}
-                    />
-                  </div>
-                  {renderCounter('Slide Count', displayedSlideCount, setSlideCount, 1, maxSlidesAllowed, configLocked)}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium leading-5 text-text-sub-600">Tags</label>
-                    <Textarea
-                      value={tags}
-                      onChange={(event) => setTags(event.target.value)}
-                      placeholder="Promo, Insight, Tips"
-                      className="min-h-[68px] resize-none text-sm"
-                      disabled={configLocked}
-                    />
+                {renderCounter('Slide Count', displayedSlideCount, setSlideCount, 1, maxSlidesAllowed, configLocked)}
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium leading-5 text-text-sub-600">Tags</label>
+                  <Textarea
+                    value={tags}
+                    onChange={(event) => setTags(event.target.value)}
+                    placeholder="Promo, Insight, Tips"
+                    className="min-h-[68px] resize-none text-sm"
+                    disabled={configLocked}
+                  />
+                  <p className="text-[11px] leading-4 text-text-soft-400">
+                    Tag pojok kanan atas. Pisahkan dengan koma.
+                  </p>
+                </div>
+              </div>
+              <div className="h-px bg-stroke-soft-200" />
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-semibold text-text-strong-950">Style Preference</p>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium leading-5 text-text-sub-600">Layout Style</label>
+                  <Select
+                    value={layoutStyle}
+                    onChange={(event) => setLayoutStyle(event.target.value as LayoutStylePreference)}
+                    options={LAYOUT_STYLE_OPTIONS.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                    }))}
+                    disabled={configLocked}
+                  />
+                  <p className="text-[11px] leading-4 text-text-soft-400">
+                    {LAYOUT_STYLE_OPTIONS.find((option) => option.value === layoutStyle)?.description}
+                  </p>
+                </div>
+                <div className="flex items-start justify-between gap-3 rounded-lg border border-stroke-soft-200 bg-bg-weak-50 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium leading-5 text-text-strong-950">Image Mode</p>
                     <p className="text-[11px] leading-4 text-text-soft-400">
-                      Tag pojok kanan atas. Pisahkan dengan koma.
+                      {IMAGE_PREFERENCE_OPTIONS.find((option) => option.value === imagePreference)?.description}
                     </p>
                   </div>
+                  <Switch
+                    checked={imagePreference === 'all_slides_image'}
+                    onCheckedChange={(checked) => setImagePreference(checked ? 'all_slides_image' : 'auto')}
+                    disabled={configLocked}
+                  />
                 </div>
-                <div className="h-px bg-stroke-soft-200" />
-                <div className="flex flex-col gap-2">
-                  <p className="text-sm font-medium leading-5 text-text-strong-950">Style Preference</p>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium leading-5 text-text-sub-600">Layout Style</label>
-                    <Select
-                      value={layoutStyle}
-                      onChange={(event) => setLayoutStyle(event.target.value as LayoutStylePreference)}
-                      options={LAYOUT_STYLE_OPTIONS.map((option) => ({
-                        value: option.value,
-                        label: option.label,
-                      }))}
-                      disabled={configLocked}
-                    />
-                    <p className="text-[11px] leading-4 text-text-soft-400">
-                      {LAYOUT_STYLE_OPTIONS.find((option) => option.value === layoutStyle)?.description}
-                    </p>
-                  </div>
-                  <div className="flex items-start justify-between gap-3 rounded-lg border border-stroke-soft-200 bg-bg-weak-50 px-3 py-2">
-                    <div>
-                      <p className="text-sm font-medium leading-5 text-text-strong-950">Image Mode</p>
-                      <p className="text-[11px] leading-4 text-text-soft-400">
-                        {IMAGE_PREFERENCE_OPTIONS.find((option) => option.value === imagePreference)?.description}
-                      </p>
-                    </div>
+              </div>
+              <div className="h-px bg-stroke-soft-200" />
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-semibold text-text-strong-950">Layout</p>
+                <div className="grid grid-cols-3 gap-1">
+                  {referenceModes.map(({ mode, icon, label }) => (
                     <button
+                      key={mode}
                       type="button"
-                      disabled={configLocked}
-                      className={`relative mt-0.5 h-5 w-8 rounded-full transition-colors disabled:opacity-60 ${
-                        imagePreference === 'all_slides_image' ? 'bg-primary-accent' : 'bg-bg-weak-100'
+                      disabled={configLocked || (mode !== 'no_reference' && (visualRefsQuery.data?.length ?? 0) === 0)}
+                      onClick={() => { setRefMode(mode); if (mode !== 'manual') setChosenRefId(null); }}
+                      className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[11px] font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
+                        refMode === mode ? 'border-primary-base bg-primary-base/5 text-primary-base' : 'border-stroke-soft-200 text-text-sub-600'
                       }`}
-                      onClick={() => setImagePreference((current) => current === 'all_slides_image' ? 'auto' : 'all_slides_image')}
-                      aria-label="Toggle all slides image"
                     >
-                      <span
-                        className={`absolute top-1 size-3 rounded-full bg-bg-white-0 shadow-[0px_1px_2px_rgba(10,13,20,0.12)] transition-all ${
-                          imagePreference === 'all_slides_image' ? 'left-[16px]' : 'left-1'
-                        }`}
-                      />
+                      {icon}
+                      {label}
                     </button>
-                  </div>
+                  ))}
                 </div>
-                <div className="h-px bg-stroke-soft-200" />
-                <div className="flex flex-col gap-2">
-                  <p className="text-sm font-medium leading-5 text-text-strong-950">Layout</p>
-                  <div className="grid grid-cols-3 gap-1">
-                    {referenceModes.map(({ mode, icon, label }) => (
+                {refMode === 'manual' && (
+                  <div className="grid max-h-[160px] grid-cols-2 gap-2 overflow-y-auto">
+                    {(visualRefsQuery.data ?? []).map((ref) => (
                       <button
-                        key={mode}
+                        key={ref.id}
                         type="button"
-                        disabled={configLocked || (mode !== 'no_reference' && (visualRefsQuery.data?.length ?? 0) === 0)}
-                        onClick={() => { setRefMode(mode); if (mode !== 'manual') setChosenRefId(null); }}
-                        className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[11px] font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
-                          refMode === mode ? 'border-primary-base bg-primary-base/5 text-primary-base' : 'border-stroke-soft-200 text-text-sub-600'
+                        disabled={configLocked}
+                        onClick={() => setChosenRefId(ref.id)}
+                        className={`relative overflow-hidden rounded-lg border-2 ${
+                          chosenRefId === ref.id ? 'border-primary-base' : 'border-stroke-soft-200'
                         }`}
                       >
-                        {icon}
-                        {label}
+                        <img src={ref.imageUrl} alt={ref.name} className="aspect-square w-full object-cover" />
+                        <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1 py-0.5 text-[10px] text-white">{ref.name}</span>
                       </button>
                     ))}
                   </div>
-                  {refMode === 'manual' && (
-                    <div className="grid max-h-[160px] grid-cols-2 gap-2 overflow-y-auto">
-                      {(visualRefsQuery.data ?? []).map((ref) => (
-                        <button
-                          key={ref.id}
-                          type="button"
-                          disabled={configLocked}
-                          onClick={() => setChosenRefId(ref.id)}
-                          className={`relative overflow-hidden rounded-lg border-2 ${
-                            chosenRefId === ref.id ? 'border-primary-base' : 'border-stroke-soft-200'
-                          }`}
-                        >
-                          <img src={ref.imageUrl} alt={ref.name} className="aspect-square w-full object-cover" />
-                          <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1 py-0.5 text-[10px] text-white">{ref.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             </div>
-            <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-col gap-2 border-t border-stroke-soft-200 bg-bg-white-0 p-4">
-              {configSavedAt && (
-                <p className="text-center text-xs text-text-soft-400">
-                  Config {configSavedAt === 'Loaded' ? 'loaded' : `saved ${configSavedAt}`}
-                </p>
-              )}
-              <Button
-                variant="primary"
-                disabled={configLocked}
-                leftIcon={<Save size={16} />}
-                onClick={saveCurrentConfig}
-                className="w-full"
-              >
-                Save
-              </Button>
-            </div>
-          </aside>
-        </div>
+          </div>
+          <div className="flex flex-col gap-2 pt-4 border-t border-stroke-soft-200 bg-bg-white-0">
+            {configSavedAt && (
+              <p className="text-center text-xs text-text-soft-400">
+                Config {configSavedAt === 'Loaded' ? 'loaded' : `saved ${configSavedAt}`}
+              </p>
+            )}
+            <Button
+              variant="primary"
+              disabled={configLocked}
+              leftIcon={<Save size={16} />}
+              onClick={saveCurrentConfig}
+              className="w-full"
+            >
+              Save
+            </Button>
+          </div>
+        </aside>
       </div>
     );
   }
@@ -1789,7 +1754,7 @@ export default function ContentGeneratorPage() {
     const requiredImages = workflow.slides.filter((slide) => slide.sduiSlide.image_requirement === 'required').length;
     const renderedImages = workflow.slides.filter((slide) => Boolean(slide.renderedImageUrl)).length;
     return (
-      <div className="rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
+      <div className="rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-none">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-sm font-semibold text-text-strong-950">Hermes Workflow</p>
@@ -1798,10 +1763,10 @@ export default function ContentGeneratorPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" leftIcon={<Download size={13} />} onClick={handleDownloadWorkflow}>
+            <Button variant="secondary" size="md" leftIcon={<Download size={13} />} onClick={handleDownloadWorkflow}>
               Workflow JSON
             </Button>
-            <Button variant="secondary" size="sm" leftIcon={<Copy size={13} />} onClick={() => void handleCopyCaption()}>
+            <Button variant="secondary" size="md" leftIcon={<Copy size={13} />} onClick={() => void handleCopyCaption()}>
               Copy Caption
             </Button>
           </div>
@@ -1820,13 +1785,15 @@ export default function ContentGeneratorPage() {
           </div>
           <div className="rounded-lg border border-stroke-soft-200 bg-bg-weak-50 p-3">
             <p className="mb-2 text-xs font-semibold uppercase text-text-soft-400">Prompts</p>
-            <div className="max-h-[220px] space-y-2 overflow-y-auto">
-              {workflow.slidePrompts.map((prompt) => (
-                <details key={prompt.slide_number} className="rounded-md bg-bg-white-0 p-2 text-xs text-text-sub-600">
-                  <summary className="cursor-pointer font-semibold text-text-strong-950">Slide {prompt.slide_number}</summary>
-                  <p className="mt-1 whitespace-pre-wrap leading-5">{prompt.prompt}</p>
-                </details>
-              ))}
+            <div className="max-h-[220px] overflow-y-auto">
+              <Accordion
+                accordionStyle="subtle"
+                items={workflow.slidePrompts.map((prompt) => ({
+                  id: String(prompt.slide_number),
+                  title: `Slide ${prompt.slide_number}`,
+                  content: <p className="mt-1 whitespace-pre-wrap leading-5 text-xs text-text-sub-600">{prompt.prompt}</p>
+                }))}
+              />
             </div>
           </div>
           <div className="rounded-lg border border-stroke-soft-200 bg-bg-weak-50 p-3">
@@ -1865,13 +1832,6 @@ export default function ContentGeneratorPage() {
             <CardTitle>Hasil Carousel</CardTitle>
             <CardDescription className="break-all">Job: {activeJobId}</CardDescription>
           </div>
-          {job && (
-            <Badge
-              variant={job.status === 'success' ? 'success' : job.status === 'failed' ? 'error' : 'warning'}
-            >
-              {job.status === 'pending' ? 'Diproses' : job.status === 'success' ? 'Selesai' : 'Gagal'}
-            </Badge>
-          )}
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {renderWorkflowPanel(job?.workflow ?? null)}
@@ -1899,8 +1859,7 @@ export default function ContentGeneratorPage() {
                   variant="secondary"
                   leftIcon={<RotateCcw size={14} />}
                   onClick={() => {
-                    setClientPollTimedOut(false);
-                    pollCapReachedRef.current = false;
+                    armPollCap();
                     void jobQuery.refetch();
                   }}
                 >
@@ -1914,6 +1873,22 @@ export default function ContentGeneratorPage() {
             <div className="flex items-start gap-2 rounded-panel border border-state-danger-border bg-state-danger-light p-4 text-sm text-state-danger-dark">
               <AlertTriangle size={16} className="mt-0.5 shrink-0" />
               <span>Job gagal: {failureDisplay(job.reason, job.errorCode)}</span>
+            </div>
+          )}
+
+          {job?.status === 'success' && (job.qualityWarnings?.length ?? 0) > 0 && (
+            <div className="flex items-start gap-2 rounded-panel border border-state-warning-border bg-bg-white-0 p-4 text-sm text-text-sub-600">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0 text-state-warning-base" />
+              <div className="flex flex-col gap-1">
+                <p className="font-medium text-text-strong-950">
+                  Beberapa teks disesuaikan otomatis agar muat layout:
+                </p>
+                <ul className="list-disc pl-4">
+                  {job.qualityWarnings?.map((warning, idx) => (
+                    <li key={idx}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
             </div>
           )}
 
@@ -2102,505 +2077,6 @@ export default function ContentGeneratorPage() {
 	    );
 	  }
 
-	  function renderBrandTab() {
-    if (brandKitQuery.isLoading) {
-      return <Skeleton className="h-96 w-full max-w-[760px] rounded-panel" />;
-    }
-    const fontFamilyOptions = Array.from(
-      new Set([...fonts.map((f) => f.family), ...((brandKit?.fonts ?? []).map((f) => f.family))].filter(Boolean)),
-    ).map((f) => ({ label: f, value: f }));
-    const brandKitNeedsLogo = !brandKit?.logoUrl && !logoFile;
-    const brandKitNeedsFont = (brandKit?.fonts.length ?? 0) === 0 && fonts.length === 0;
-    const brandKitSaveDisabled =
-      !canManage || brandKitNeedsLogo || brandKitNeedsFont || saveBrandKitMutation.isPending;
-    const colorRow = (
-      label: string,
-      value: string,
-      setter: (v: string) => void,
-    ) => (
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-text-strong-950">{label}</label>
-        <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={isHex(value) ? value : '#000000'}
-            onChange={(e) => setter(e.target.value)}
-            disabled={!canManage}
-            className="size-9 shrink-0 cursor-pointer rounded-lg border border-stroke-soft-200 bg-bg-white-0"
-          />
-          <Input
-            value={value}
-            onChange={(e) => setter(e.target.value)}
-            wrapperClassName={`flex-1 ${!isHex(value) ? '!border-state-danger-base' : ''}`}
-          />
-        </div>
-      </div>
-    );
-    const typographyRoleRow = (role: ExtraTypographyRole, label: string) => {
-      const current = extraTypography[role];
-      return (
-        <div className="grid grid-cols-1 gap-3 rounded-panel border border-stroke-soft-200 bg-bg-weak-50 p-3 lg:grid-cols-[minmax(0,1fr)_150px_120px]">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-text-strong-950">{label}</label>
-            <Select
-              value={current.fontFamily}
-              onChange={(event) =>
-                setExtraTypography((prev) => ({
-                  ...prev,
-                  [role]: { ...prev[role], fontFamily: event.target.value },
-                }))
-              }
-              options={fontFamilyOptions.length ? fontFamilyOptions : [{ label: 'Unggah font dulu', value: '' }]}
-              disabled={!canManage}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-text-strong-950">Warna</label>
-            <Input
-              value={current.color}
-              onChange={(event) =>
-                setExtraTypography((prev) => ({
-                  ...prev,
-                  [role]: { ...prev[role], color: event.target.value },
-                }))
-              }
-              disabled={!canManage}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-text-strong-950">Size</label>
-            <Input
-              type="number"
-              min="8"
-              max="180"
-              value={current.sizePx}
-              onChange={(event) =>
-                setExtraTypography((prev) => ({
-                  ...prev,
-                  [role]: { ...prev[role], sizePx: event.target.value },
-                }))
-              }
-              disabled={!canManage}
-            />
-          </div>
-        </div>
-      );
-    };
-    return (
-      <div className="flex max-w-[760px] flex-col gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Brand Kit</CardTitle>
-            <CardDescription>
-              Setup identitas utama untuk logo, warna, font pairing, dan chrome carousel.
-              {!canManage && ' Hanya Admin yang dapat mengubah.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-6">
-            {brandKit && (
-              <div className="flex items-center gap-3 rounded-panel border border-stroke-soft-200 bg-bg-weak-50 p-3">
-                <img src={brandKit.logoUrl} alt="Logo" className="size-12 rounded-lg object-contain" />
-                <div className="text-sm">
-                  <p className="font-medium text-text-strong-950">Brand Kit aktif</p>
-                  <p className="text-text-soft-400">
-                    {brandKit.fonts.length} font · {brandKit.colors.length} warna
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {/* Logo */}
-              <div className="flex flex-col gap-2 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-4">
-                <label className="text-sm font-medium text-text-strong-950">Logo</label>
-                <input
-                  ref={logoInputRef}
-                  type="file"
-                  accept="image/png"
-                  className="hidden"
-                  onChange={handleLogoPick}
-                />
-                <div className="flex items-center gap-3">
-                  <div className="flex size-12 shrink-0 items-center justify-center rounded-lg border border-stroke-soft-200 bg-bg-weak-50">
-                    {brandKit?.logoUrl ? (
-                      <img src={brandKit.logoUrl} alt="Logo" className="max-h-9 max-w-9 object-contain" />
-                    ) : (
-                      <Images size={18} className="text-text-soft-400" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <Button
-                      variant="outline"
-                      leftIcon={<Upload size={16} />}
-                      disabled={!canManage}
-                      onClick={() => logoInputRef.current?.click()}
-                    >
-                      {brandKit ? 'Ganti Logo' : 'Pilih Logo'}
-                    </Button>
-                    <p className="mt-1 truncate text-xs text-text-soft-400">
-                      {logoFile?.name ?? (brandKit ? 'Logo lama dipertahankan' : 'PNG, maks 5 MB')}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Fonts */}
-              <div className="flex flex-col gap-2 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-4">
-                <label className="text-sm font-medium text-text-strong-950">Font Pairing</label>
-                <input
-                  ref={fontInputRef}
-                  type="file"
-                  accept=".ttf,.otf"
-                  multiple
-                  className="hidden"
-                  onChange={handleFontPick}
-                />
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0 text-sm text-text-sub-600">
-                    <p className="truncate">
-                      {fonts.length > 0
-                        ? `${fonts.length} font baru`
-                        : brandKit?.fonts.length
-                          ? `${brandKit.fonts.length} font aktif`
-                          : 'Belum ada font'}
-                    </p>
-                    <p className="text-xs text-text-soft-400">.ttf/.otf</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    leftIcon={<Plus size={16} />}
-                    disabled={!canManage}
-                    onClick={() => fontInputRef.current?.click()}
-                  >
-                    Tambah
-                  </Button>
-                </div>
-                {fonts.length > 0 && (
-                  <div className="flex flex-col gap-2 pt-2">
-                    {fonts.map((font, idx) => (
-                      <div
-                        key={`${font.fileName}-${idx}`}
-                        className="flex items-center gap-2 rounded-lg border border-stroke-soft-200 p-2"
-                      >
-                        <Input
-                          value={font.family}
-                          onChange={(e) =>
-                            setFonts((prev) =>
-                              prev.map((f, i) => (i === idx ? { ...f, family: e.target.value } : f)),
-                            )
-                          }
-                          wrapperClassName="flex-1"
-                        />
-                        <Badge variant="neutral" className="uppercase">{font.format}</Badge>
-                        <button
-                          className="text-text-soft-400 hover:text-state-danger-base"
-                          onClick={() => setFonts((prev) => prev.filter((_, i) => i !== idx))}
-                          aria-label="Hapus font"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Colors */}
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-text-strong-950">Brand Colors</label>
-              <div className="flex flex-wrap gap-2">
-                {BRAND_COLOR_PRESETS.map((preset) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    disabled={!canManage}
-                    onClick={() => {
-                      const nextColors = [...preset.colors];
-                      setColors(nextColors);
-                      setHeaderColor(nextColors[0]!);
-                      setBodyColor(nextColors[0]!);
-                      setBgColor(nextColors[1]!);
-                      setAccentColor(nextColors[2]!);
-                      setHighlightColor(nextColors[2]!);
-                      setPaginationColor(nextColors[0]!);
-                      setMetaColor(nextColors[0]!);
-                    }}
-                    className="flex h-8 items-center gap-2 rounded-lg border border-stroke-soft-200 bg-bg-white-0 px-2 text-xs font-medium text-text-sub-600 transition-colors hover:bg-bg-weak-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <span className="flex -space-x-1">
-                      {preset.colors.map((color) => (
-                        <span
-                          key={color}
-                          className="size-4 rounded-full border border-bg-white-0"
-                          style={{ backgroundColor: color }}
-                        />
-                      ))}
-                    </span>
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-col gap-2">
-                {colors.map((color, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={isHex(color) ? color : '#000000'}
-                      onChange={(e) =>
-                        setColors((prev) => prev.map((c, i) => (i === idx ? e.target.value : c)))
-                      }
-                      disabled={!canManage}
-                      className="size-9 shrink-0 cursor-pointer rounded-lg border border-stroke-soft-200 bg-bg-white-0"
-                    />
-                    <Input
-                      value={color}
-                      onChange={(e) =>
-                        setColors((prev) => prev.map((c, i) => (i === idx ? e.target.value : c)))
-                      }
-                      wrapperClassName={`flex-1 ${!isHex(color) ? '!border-state-danger-base' : ''}`}
-                    />
-                    {colors.length > 1 && (
-                      <button
-                        className="text-text-soft-400 hover:text-state-danger-base"
-                        onClick={() => setColors((prev) => prev.filter((_, i) => i !== idx))}
-                        aria-label="Hapus warna"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                leftIcon={<Plus size={14} />}
-                disabled={!canManage}
-                onClick={() => setColors((prev) => [...prev, '#000000'])}
-                className="self-start"
-              >
-                Tambah Warna
-              </Button>
-            </div>
-
-            <div className="rounded-panel border border-stroke-soft-200 bg-bg-weak-50 p-4">
-              <div
-                className="relative mx-auto aspect-square w-full max-w-[260px] overflow-hidden rounded-[18px] border border-stroke-soft-200 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]"
-                style={{ backgroundColor: isHex(bgColor) ? bgColor : '#F4F3EF' }}
-              >
-                <div className="flex items-center justify-between">
-                  <span
-                    className="rounded-full px-2 py-1 text-[10px] font-semibold uppercase"
-                    style={{
-                      backgroundColor: isHex(accentColor) ? accentColor : '#187DB4',
-                      color: isHex(metaColor) ? metaColor : '#FFFFFF',
-                    }}
-                  >
-                    TAG
-                  </span>
-                  {brandKit?.logoUrl && logoPlacement !== 'none' && (
-                    <img
-                      src={brandKit.logoUrl}
-                      alt="Logo preview"
-                      className="w-16 object-contain"
-                      style={{ height: `${Math.max(14, Math.min(48, Number(logoSizePx) || 24))}px` }}
-                    />
-                  )}
-                </div>
-                <div className="mt-10">
-                  <p
-                    className="text-[26px] font-semibold leading-[1.05]"
-                    style={{ color: isHex(headerColor) ? headerColor : '#1a1d24' }}
-                  >
-                    Brand chrome preview
-                  </p>
-                  <p
-                    className="mt-2 text-xs leading-5"
-                    style={{ color: isHex(bodyColor) ? bodyColor : '#5b626e' }}
-                  >
-                    Logo, tag, footer, pagination, dan tombol swipe tetap terkunci di semua slide.
-                  </p>
-                </div>
-                <div className="absolute inset-x-4 bottom-4 flex items-center justify-between gap-2">
-                  <span className="truncate text-[10px] font-medium" style={{ color: isHex(metaColor) ? metaColor : '#5b626e' }}>
-                    {siteUrl || 'Footer Brand Text'}
-                  </span>
-                  <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: isHex(paginationColor) ? paginationColor : '#5b626e' }}>
-                    {pageNumberFormat || '{current}/{total}'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Chrome */}
-            <div className="grid grid-cols-1 gap-4 border-t border-stroke-soft-200 pt-4 sm:grid-cols-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-text-strong-950">Posisi Logo</label>
-                <Select
-                  value={logoPlacement}
-                  onChange={(e) => setLogoPlacement(e.target.value)}
-                  options={LOGO_PLACEMENT_OPTIONS}
-                  disabled={!canManage}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-text-strong-950">Ukuran Logo</label>
-                <Input
-                  type="number"
-                  min="12"
-                  max="180"
-                  value={logoSizePx}
-                  onChange={(e) => setLogoSizePx(e.target.value)}
-                  disabled={!canManage}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-text-strong-950">Pagination</label>
-                <Input
-                  value={pageNumberFormat}
-                  onChange={(e) => setPageNumberFormat(e.target.value)}
-                  placeholder="{current}/{total}"
-                  disabled={!canManage}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-text-strong-950">Footer Brand Text</label>
-                <Input
-                  value={siteUrl}
-                  onChange={(e) => setSiteUrl(e.target.value)}
-                  placeholder="growhaley.com"
-                  disabled={!canManage}
-                />
-              </div>
-            </div>
-
-            {/* Typography & color roles (Brand Kit v2) */}
-            <details className="group rounded-panel border border-stroke-soft-200 bg-bg-white-0">
-              <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-text-strong-950">
-                Advanced
-                <ChevronRight size={16} className="text-text-soft-400 transition-transform group-open:rotate-90" />
-              </summary>
-              <div className="flex flex-col gap-4 border-t border-stroke-soft-200 p-4">
-                <div>
-                  <p className="text-sm font-medium text-text-strong-950">Typography & Color Roles</p>
-                  <p className="text-xs text-text-soft-400">
-                    Role detail tetap tersedia untuk fine-tuning, tapi tidak wajib disentuh untuk generate.
-                  </p>
-                </div>
-
-              {/* Cover role */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text-strong-950">Font Cover</label>
-                  <Select
-                    value={coverFont}
-                    onChange={(e) => setCoverFont(e.target.value)}
-                    options={fontFamilyOptions.length ? fontFamilyOptions : [{ label: 'Unggah font dulu', value: '' }]}
-                    disabled={!canManage}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text-strong-950">Ukuran Cover</label>
-                  <Input
-                    type="number"
-                    min="12"
-                    max="180"
-                    value={coverSize}
-                    onChange={(e) => setCoverSize(e.target.value)}
-                    disabled={!canManage}
-                  />
-                </div>
-              </div>
-
-              {/* Header role */}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)]">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text-strong-950">Font Header</label>
-                  <Select
-                    value={headerFont}
-                    onChange={(e) => setHeaderFont(e.target.value)}
-                    options={fontFamilyOptions.length ? fontFamilyOptions : [{ label: 'Unggah font dulu', value: '' }]}
-                    disabled={!canManage}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text-strong-950">Ukuran Header</label>
-                  <Input
-                    type="number"
-                    min="12"
-                    max="180"
-                    value={headerSize}
-                    onChange={(e) => setHeaderSize(e.target.value)}
-                    disabled={!canManage}
-                  />
-                </div>
-                {colorRow('Warna Header', headerColor, setHeaderColor)}
-              </div>
-
-              {/* Body role */}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)]">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text-strong-950">Font Body</label>
-                  <Select
-                    value={bodyFont}
-                    onChange={(e) => setBodyFont(e.target.value)}
-                    options={fontFamilyOptions.length ? fontFamilyOptions : [{ label: 'Unggah font dulu', value: '' }]}
-                    disabled={!canManage}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text-strong-950">Ukuran Body</label>
-                  <Input
-                    type="number"
-                    min="8"
-                    max="96"
-                    value={bodySize}
-                    onChange={(e) => setBodySize(e.target.value)}
-                    disabled={!canManage}
-                  />
-                </div>
-                {colorRow('Warna Body', bodyColor, setBodyColor)}
-              </div>
-
-              {/* Highlight + accent + chrome colors */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {colorRow('Warna Highlight', highlightColor, setHighlightColor)}
-                {colorRow('Accent / Button', accentColor, setAccentColor)}
-                {colorRow('Warna Background', bgColor, setBgColor)}
-                {colorRow('Warna Pagination', paginationColor, setPaginationColor)}
-                {colorRow('Tag/Footer Text', metaColor, setMetaColor)}
-              </div>
-              <div className="flex flex-col gap-3 border-t border-stroke-soft-200 pt-4">
-                <p className="text-sm font-medium text-text-strong-950">Component Text Roles</p>
-                {typographyRoleRow('tag', 'Tag')}
-                {typographyRoleRow('quote', 'Quote')}
-                {typographyRoleRow('list', 'List')}
-                {typographyRoleRow('cta', 'CTA')}
-                {typographyRoleRow('card', 'Card')}
-                {typographyRoleRow('stat', 'Stat')}
-                {typographyRoleRow('caption', 'Caption')}
-                {typographyRoleRow('chrome', 'Chrome')}
-              </div>
-              </div>
-            </details>
-          </CardContent>
-          <CardFooter className="flex-col items-stretch gap-2 border-t border-stroke-soft-200 bg-bg-weak-50 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-text-soft-400">
-              Logo/font lama akan dipertahankan jika tidak ada upload baru.
-            </p>
-            <Button
-              disabled={brandKitSaveDisabled}
-              onClick={() => saveBrandKitMutation.mutate()}
-            >
-              {saveBrandKitMutation.isPending ? 'Menyimpan…' : 'Simpan Brand Kit'}
-            </Button>
-          </CardFooter>
-        </Card>
-
-      </div>
-    );
-  }
 
   function renderTemplateTab() {
     if (masterTemplateQuery.isLoading) {
@@ -2610,12 +2086,6 @@ export default function ContentGeneratorPage() {
     const maxSlidesValid = Number.isInteger(maxSlidesNum) && maxSlidesNum >= 1 && maxSlidesNum <= 10;
     return (
       <div className="flex max-w-[760px] flex-col gap-6">
-        {!brandKit && (
-          <div className="flex items-start gap-3 rounded-panel border border-state-warning-border bg-bg-white-0 p-4 text-sm text-text-sub-600 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
-            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-state-warning-base" />
-            <span>Buat Brand Kit terlebih dahulu sebelum menyusun Master Template.</span>
-          </div>
-        )}
         <Card>
           <CardHeader>
             <CardTitle>Master Template</CardTitle>
@@ -2726,12 +2196,11 @@ export default function ContentGeneratorPage() {
             <Button
               disabled={
                 !canManage ||
-                !brandKit ||
                 allowedBlocks.length === 0 ||
                 templateRatios.length === 0 ||
-                !maxSlidesValid ||
-                saveTemplateMutation.isPending
+                !maxSlidesValid
               }
+              loading={saveTemplateMutation.isPending}
               onClick={() => saveTemplateMutation.mutate()}
             >
               {saveTemplateMutation.isPending ? 'Menyimpan…' : 'Simpan Master Template'}
@@ -2790,8 +2259,8 @@ export default function ContentGeneratorPage() {
                 <input ref={refInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleRefPick} />
                 <Button
                   variant="outline"
-                  leftIcon={uploadRefMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
-                  disabled={uploadRefMutation.isPending}
+                  leftIcon={<Upload size={16} />}
+                  loading={uploadRefMutation.isPending}
                   onClick={() => refInputRef.current?.click()}
                   className="self-start"
                 >
@@ -2859,7 +2328,9 @@ export default function ContentGeneratorPage() {
           <CardHeader>
             <CardTitle>Approved Examples</CardTitle>
             <CardDescription>
-              Struktur carousel yang disetujui dipakai AI sebagai referensi gaya (tanpa menimpa brand).
+              Contoh yang disimpan otomatis dipakai AI sebagai kerangka struktur untuk setiap
+              generate berikutnya — makin banyak contoh yang disetujui, makin konsisten hasilnya
+              dengan gaya tim (tanpa menimpa brand).
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -2908,7 +2379,7 @@ export default function ContentGeneratorPage() {
                     {canManage && (
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="md"
                         leftIcon={<Trash2 size={14} />}
                         disabled={unapproveMutation.isPending}
                         onClick={() => unapproveMutation.mutate(ex.id)}

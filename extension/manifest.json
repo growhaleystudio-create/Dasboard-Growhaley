@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Lead Generator — Google Maps Capture",
+  "version": "0.1.0",
+  "description": "Capture leads from Google Maps results and send them to the Lead Generator dashboard.",
+  "action": {
+    "default_title": "Capture Google Maps",
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "src/assets/icon-16.png",
+      "32": "src/assets/icon-32.png",
+      "48": "src/assets/icon-48.png",
+      "128": "src/assets/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "src/assets/icon-16.png",
+    "32": "src/assets/icon-32.png",
+    "48": "src/assets/icon-48.png",
+    "128": "src/assets/icon-128.png"
+  },
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.google.com/maps/*"
+  ],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:3000/*",
+      "http://localhost:3001/*",
+      "https://*.leads-generator.app/*"
+    ]
+  }
+}

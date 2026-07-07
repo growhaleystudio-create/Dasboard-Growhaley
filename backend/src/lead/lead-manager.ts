@@ -23,8 +23,8 @@
  * inject `runInTx` plus repo factories backed by in-memory fakes.
  */
 
-import type { AuthSession, Lead, LeadStatus, Result } from '@leads-generator/shared';
-import { err, LEAD_STATUSES, ok } from '@leads-generator/shared';
+import type { AuthSession, Lead, LeadStatus, Result, WhatsAppVerificationStatus } from '@leads-generator/shared';
+import { err, LEAD_STATUSES, ok, WHATSAPP_VERIFICATION_STATUSES } from '@leads-generator/shared';
 import type { Pool } from 'pg';
 
 import { withTransaction, type Tx } from '../db/transaction.js';
@@ -39,7 +39,7 @@ import { NoteRepository } from './note-repository.js';
  * `findById` (team-scoped lookup shared by all three), `updateStatus`
  * (R8.2), and `delete` (R8.7 permanent delete).
  */
-export type LeadStatusStore = Pick<LeadRepository, 'findById' | 'updateStatus' | 'delete'>;
+export type LeadStatusStore = Pick<LeadRepository, 'findById' | 'updateStatus' | 'updateWhatsappVerificationStatus' | 'delete'>;
 
 /**
  * Minimal Activity write surface the manager needs: `recordStatusChange`
@@ -136,6 +136,10 @@ function isLeadStatus(value: string): value is LeadStatus {
   return (LEAD_STATUSES as readonly string[]).includes(value);
 }
 
+function isWhatsAppVerificationStatus(value: string): value is WhatsAppVerificationStatus {
+  return (WHATSAPP_VERIFICATION_STATUSES as readonly string[]).includes(value);
+}
+
 /**
  * Manages Lead status transitions and the Activity_Log entries they
  * produce (R8).
@@ -219,6 +223,41 @@ export class LeadManager {
         to,
         now(),
       );
+
+      return ok(updated);
+    });
+  }
+
+  async changeWhatsappVerificationStatus(
+    actor: AuthSession,
+    leadId: string,
+    to: WhatsAppVerificationStatus,
+  ): Promise<Result<Lead>> {
+    if (!isWhatsAppVerificationStatus(to)) {
+      return err({
+        code: 'VALIDATION',
+        messages: [`Status verifikasi WhatsApp tidak valid: ${String(to)}`],
+      });
+    }
+
+    const runInTx = this.resolveRunInTx();
+    const makeLeads = this.deps.leads ?? ((tx: Tx): LeadStatusStore => new LeadRepository(tx));
+
+    return runInTx(async (tx) => {
+      const leads = makeLeads(tx);
+      const current = await leads.findById(actor.teamId, leadId);
+      if (current === null) {
+        return err({ code: 'NOT_FOUND', message: `Lead tidak ditemukan: ${leadId}` });
+      }
+
+      if (current.whatsappVerificationStatus === to) {
+        return ok(current);
+      }
+
+      const updated = await leads.updateWhatsappVerificationStatus(actor.teamId, leadId, to);
+      if (updated === null) {
+        return err({ code: 'NOT_FOUND', message: `Lead tidak ditemukan: ${leadId}` });
+      }
 
       return ok(updated);
     });

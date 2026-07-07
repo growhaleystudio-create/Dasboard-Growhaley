@@ -24,15 +24,15 @@ const ALL_RATIOS: AspectRatio[] = ['1:1', '4:5', '9:16'];
 describe('DefaultSlideLayoutCatalog.variantsFor', () => {
   const catalog = new DefaultSlideLayoutCatalog();
 
-  it('returns cover-centered variant for ["heading"] and each aspect ratio', () => {
+  it('returns gw_poster_cover variant for ["heading"] and each aspect ratio', () => {
     for (const ratio of ALL_RATIOS) {
       const variants = catalog.variantsFor(['heading'], ratio);
       expect(variants.length).toBeGreaterThanOrEqual(1);
-      expect(variants.some((v) => v.id === 'cover-centered')).toBe(true);
+      expect(variants.some((v) => v.id === 'gw_poster_cover')).toBe(true);
     }
   });
 
-  it('returns text-traditional variant for ["heading","body"] (order should not matter)', () => {
+  it('returns gw_poster_statement variant for ["heading","body"] (order should not matter)', () => {
     for (const ratio of ALL_RATIOS) {
       const variants1 = catalog.variantsFor(['heading', 'body'], ratio);
       const variants2 = catalog.variantsFor(['body', 'heading'], ratio);
@@ -40,43 +40,49 @@ describe('DefaultSlideLayoutCatalog.variantsFor', () => {
       const ids1 = variants1.map((v) => v.id).sort();
       const ids2 = variants2.map((v) => v.id).sort();
       expect(ids1).toEqual(ids2);
-      expect(variants1.some((v) => v.id === 'text-traditional')).toBe(true);
+      expect(variants1.some((v) => v.id === 'gw_poster_statement')).toBe(true);
     }
   });
 
-  it('returns data-standard variant for ["heading","body","chart"]', () => {
+  it('falls back to the generic default for ["heading","body","chart"] (chart layouts removed)', () => {
     const variants = catalog.variantsFor(['heading', 'body', 'chart'], '1:1');
-    expect(variants.some((v) => v.id === 'data-standard')).toBe(true);
+    expect(variants.some((v) => v.compositionType === 'default')).toBe(true);
+    expect(variants.some((v) => v.id === 'gw_poster_statement')).toBe(true);
   });
 
-  it('returns mockup-standard variant for ["mockup","body"]', () => {
-    const variants = catalog.variantsFor(['mockup', 'body'], '4:5');
-    expect(variants.some((v) => v.id === 'mockup-standard')).toBe(true);
+  it('returns gw_photo_rotated variant for ["heading","body","image"]', () => {
+    const variants = catalog.variantsFor(['heading', 'body', 'image'], '4:5');
+    expect(variants.some((v) => v.id === 'gw_photo_rotated')).toBe(true);
   });
 
-  it('returns chart-standard variant for ["heading","chart"]', () => {
-    const variants = catalog.variantsFor(['heading', 'chart'], '9:16');
-    expect(variants.some((v) => v.id === 'chart-standard')).toBe(true);
+  it('returns gw_photo_statement variant for ["heading","image"]', () => {
+    const variants = catalog.variantsFor(['heading', 'image'], '9:16');
+    expect(variants.some((v) => v.id === 'gw_photo_statement')).toBe(true);
   });
 
-  it('returns stat-standard variant for ["heading","body","stat"]', () => {
+  it('returns gw_poster_stat variant for ["heading","body","stat"]', () => {
     const variants = catalog.variantsFor(['heading', 'body', 'stat'], '1:1');
-    expect(variants.some((v) => v.id === 'stat-standard')).toBe(true);
+    expect(variants.some((v) => v.id === 'gw_poster_stat')).toBe(true);
   });
 
-  it('returns list-standard variant for ["heading","bullet"]', () => {
+  it('returns gw_poster_list variant for ["heading","bullet"]', () => {
     const variants = catalog.variantsFor(['heading', 'bullet'], '4:5');
-    expect(variants.some((v) => v.id === 'list-standard')).toBe(true);
+    expect(variants.some((v) => v.id === 'gw_poster_list')).toBe(true);
   });
 
-  it('returns quote-centered variant for ["quote"]', () => {
+  it('returns gw_poster_quote variant for ["quote"]', () => {
     const variants = catalog.variantsFor(['quote'], '1:1');
-    expect(variants.some((v) => v.id === 'quote-centered')).toBe(true);
+    expect(variants.some((v) => v.id === 'gw_poster_quote')).toBe(true);
   });
 
-  it('returns cta-centered variant for ["cta"]', () => {
+  it('returns gw_poster_cta variant for ["cta"]', () => {
     const variants = catalog.variantsFor(['cta'], '9:16');
-    expect(variants.some((v) => v.id === 'cta-centered')).toBe(true);
+    expect(variants.some((v) => v.id === 'gw_poster_cta')).toBe(true);
+  });
+
+  it('returns gw_collage_showcase variant for ["image"]', () => {
+    const variants = catalog.variantsFor(['image'], '1:1');
+    expect(variants.some((v) => v.id === 'gw_collage_showcase')).toBe(true);
   });
 
   it('falls back to generic-default for an unknown composition', () => {
@@ -99,7 +105,8 @@ describe('DefaultSlideLayoutCatalog.variantsFor', () => {
       ['heading', 'bullet'],
       ['quote'],
       ['cta'],
-      ['image'], // unknown — falls back to generic-default
+      ['image'], // collage showcase
+      ['mockup', 'body'], // unknown — falls back to generic-default
     ];
     for (const blocks of compositions) {
       for (const ratio of ALL_RATIOS) {
@@ -119,9 +126,9 @@ describe('DefaultSlideLayoutCatalog.defaultFor', () => {
     const known: [BlockType[], AspectRatio][] = [
       [['heading'], '1:1'],
       [['heading', 'body'], '4:5'],
-      [['heading', 'body', 'chart'], '9:16'],
-      [['mockup', 'body'], '1:1'],
-      [['heading', 'chart'], '4:5'],
+      [['heading', 'body', 'image'], '9:16'],
+      [['heading', 'image'], '1:1'],
+      [['heading', 'bullet'], '4:5'],
       [['quote'], '9:16'],
       [['cta'], '1:1'],
     ];
@@ -159,7 +166,8 @@ describe('DefaultSlideLayoutCatalog.defaultFor', () => {
       ['heading'],
       ['heading', 'body'],
       ['cta'],
-      ['image'], // unknown
+      ['image'],
+      ['mockup', 'body'], // unknown
     ];
     for (const blocks of compositions) {
       for (const ratio of ALL_RATIOS) {

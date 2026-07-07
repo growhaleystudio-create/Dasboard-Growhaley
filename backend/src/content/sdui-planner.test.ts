@@ -104,12 +104,10 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
     expect(body.messages[0]?.content).toContain('ATURAN PENGGUNAAN BANK DATASET');
     expect(body.messages[0]?.content).toContain('Default slide content harus padat');
     expect(body.messages[0]?.content).toContain('jangan kirim slide content hanya berisi header');
-    expect(body.messages[0]?.content).toContain('Jangan pilih layout text-safe');
     expect(body.messages[0]?.content).toContain('promptFragment + avoid list');
     expect(body.messages[0]?.content).toContain('layoutCandidates dari recipe');
-    expect(body.messages[0]?.content).toContain('prioritaskan layout family editorial');
-    expect(body.messages[0]?.content).toContain('WAJIB sertakan 2 sampai 4 komponen image_placeholder');
-    expect(body.messages[0]?.content).toContain('dual_image_comparison');
+    expect(body.messages[0]?.content).toContain('WAJIB 2 sampai 4 komponen image_placeholder');
+    expect(body.messages[0]?.content).toContain('gw_collage_showcase');
     expect(body.messages[0]?.content).toContain('warning_prevention_playbook');
     expect(body.messages[0]?.content).toContain('doodle_handdrawn');
     expect(body.messages[0]?.content).toContain('prevention_steps');
@@ -249,7 +247,7 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
           slide_number: 1,
           slide_type: 'cover',
           container_layout: 'text_dominant',
-          layout_variant_id: 'stat_highlight',
+          layout_variant_id: 'gw_poster_stat',
           image_requirement: 'none',
           typography_scale: 'balanced_classic',
           nested_groups: {
@@ -269,7 +267,7 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
           slide_number: 1,
           slide_type: 'cover',
           container_layout: 'text_dominant',
-          layout_variant_id: 'stat_highlight',
+          layout_variant_id: 'gw_poster_stat',
           image_requirement: 'none',
           typography_scale: 'balanced_classic',
           nested_groups: {
@@ -301,7 +299,7 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
     if (!result.ok) throw new Error('expected ok');
     expect(deps.wrapper.execute).toHaveBeenCalledTimes(2);
     const slide = result.value.slides[0]!;
-    const limits = getLayoutCatalogItem('stat_highlight')!.textLimits;
+    const limits = getLayoutCatalogItem('gw_poster_stat')!.textLimits;
     const tag = slide.nested_groups.top_meta?.[0];
     const header = slide.nested_groups.core_content?.find((component) => component.type === 'header');
     const body = slide.nested_groups.core_content?.find((component) => component.type === 'body');
@@ -320,7 +318,7 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
           slide_number: 1,
           slide_type: 'content',
           container_layout: 'text_dominant',
-          layout_variant_id: 'text_stack',
+          layout_variant_id: 'gw_poster_statement',
           image_requirement: 'none',
           typography_scale: 'balanced_classic',
           nested_groups: {
@@ -340,7 +338,7 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
           slide_number: 1,
           slide_type: 'content',
           container_layout: 'text_dominant',
-          layout_variant_id: 'text_stack',
+          layout_variant_id: 'gw_poster_statement',
           image_requirement: 'none',
           typography_scale: 'balanced_classic',
           nested_groups: {
@@ -374,8 +372,8 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
     if (!result.ok) throw new Error('expected ok');
     expect(deps.wrapper.execute).toHaveBeenCalledTimes(2);
     const slide = result.value.slides[0]!;
-    const limits = resolveSduiTextLimits('text_stack', { typography: typographyOverride }, slide);
-    const staticLimits = getLayoutCatalogItem('text_stack')!.textLimits;
+    const limits = resolveSduiTextLimits('gw_poster_statement', { typography: typographyOverride }, slide);
+    const staticLimits = getLayoutCatalogItem('gw_poster_statement')!.textLimits;
     const header = slide.nested_groups.core_content?.find((component) => component.type === 'header');
     const body = slide.nested_groups.core_content?.find((component) => component.type === 'body');
 
@@ -910,7 +908,7 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
           slide_number: 1,
           slide_type: 'cover',
           container_layout: 'text_dominant',
-          layout_variant_id: 'cover_centered',
+          layout_variant_id: 'gw_poster_cover',
           image_requirement: 'none',
           typography_scale: 'balanced_classic',
           nested_groups: {
@@ -926,7 +924,7 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
           slide_number: 2,
           slide_type: 'content',
           container_layout: 'split_screen',
-          layout_variant_id: 'split_text_left_image_right',
+          layout_variant_id: 'gw_photo_statement',
           image_requirement: 'required',
           typography_scale: 'balanced_classic',
           contentDirection: 'row',
@@ -956,12 +954,12 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok');
-    expect(result.value.slides[0]!.layout_variant_id).toBe('cover_centered');
-    expect(result.value.slides[0]!.layout_family).toBe('cover');
+    expect(result.value.slides[0]!.layout_variant_id).toBe('gw_poster_cover');
+    expect(result.value.slides[0]!.layout_family).toBe('poster');
     expect(result.value.slides[0]!.image_requirement).toBe('none');
     expect(result.value.slides[0]!.image_status).toBe('not_needed');
-    expect(result.value.slides[1]!.layout_variant_id).toBe('split_text_left_image_right');
-    expect(result.value.slides[1]!.layout_family).toBe('image_split');
+    expect(result.value.slides[1]!.layout_variant_id).toBe('gw_photo_statement');
+    expect(result.value.slides[1]!.layout_family).toBe('photo');
     expect(result.value.slides[1]!.image_requirement).toBe('required');
   });
 
@@ -1096,7 +1094,7 @@ describe('DefaultSduiPlanner image-aware metadata', () => {
     const image = slide.nested_groups.core_content?.find((component) => component.type === 'image_placeholder');
     expect(image?.image_object_context).toContain('modern SaaS dashboard mockup');
     expect(slide.image_requirement).toBe('required');
-    expect(slide.layout_variant_id).toBe('split_text_left_image_right');
+    expect(slide.layout_variant_id).toBe('gw_photo_statement');
   });
 
   it('extracts JSON when provider wraps the planner response in extra text', async () => {

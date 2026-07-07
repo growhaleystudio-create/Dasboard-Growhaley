@@ -11,13 +11,17 @@
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "test": "vitest run --config vitest.config.ts",
-    "migrate": "node-pg-migrate --envPath .env --migrations-dir migrations --tsconfig tsconfig.json",
+    "migrate": "npm run migrate:up",
+    "migrate:up": "node-pg-migrate --envPath .env --migrations-dir migrations up",
+    "migrate:down": "node-pg-migrate --envPath .env --migrations-dir migrations down",
+    "migrate:redo": "node-pg-migrate --envPath .env --migrations-dir migrations redo",
     "migrate:create": "node-pg-migrate create",
     "start": "node dist/start.js",
     "worker": "node dist/worker.js",
     "dev": "tsc -b -w",
     "dev:start": "node --watch dist/start.js",
-    "dev:worker": "node --watch dist/worker.js"
+    "dev:worker": "node --watch dist/worker.js",
+    "backfill:lead-scoring-breakdowns": "node dist/dev/backfill-lead-scoring-breakdowns.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
@@ -34,7 +38,8 @@
     "pg": "8.13.1",
     "satori": "^0.12.1",
     "sharp": "0.33.5",
-    "zod": "3.24.1"
+    "zod": "3.24.1",
+    "playwright": "^1.54.0"
   },
   "devDependencies": {
     "@types/node": "20.17.10",

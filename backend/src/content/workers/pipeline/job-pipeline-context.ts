@@ -59,7 +59,6 @@ export interface JobPipelineContext {
   textGuardrailOptions: SduiTextGuardrailOptions;
   
   // Feature flags
-  preferEditorial: boolean;
   layoutStyle: LayoutStylePreference;
   imagePreference: ImagePreferenceMode;
   
@@ -89,7 +88,6 @@ export interface MinimalPipelineContext {
   defaultTone: string;
   textGuardrailOptions: SduiTextGuardrailOptions;
   signal: AbortSignal;
-  preferEditorial: boolean;
   layoutStyle: LayoutStylePreference;
   imagePreference: ImagePreferenceMode;
   contentTags: string[];
@@ -109,7 +107,6 @@ export function extractMinimalContext(ctx: JobPipelineContext): MinimalPipelineC
     defaultTone: ctx.defaultTone,
     textGuardrailOptions: ctx.textGuardrailOptions,
     signal: ctx.signal,
-    preferEditorial: ctx.preferEditorial,
     layoutStyle: ctx.layoutStyle,
     imagePreference: ctx.imagePreference,
     contentTags: ctx.contentTags,

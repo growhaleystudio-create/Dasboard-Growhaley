@@ -125,7 +125,7 @@ function enrichSparseSlide(slide: SduiSlide, index: number, prompt: string): Sdu
     next = upsertCoreComponent(next, fallbackComparison(next, prompt));
   } else if (/\b(sebelum|sesudah|before|after|dulu|sekarang|manual\s+vs|vs\s+ai|tanpa|dengan|pro|kontra)\b/i.test(text) && !components.has('comparison')) {
     next = upsertCoreComponent(next, fallbackComparison(next, prompt));
-  } else if (/\b(fitur|benefit|manfaat|keunggulan|use case|alasan|offer|layanan)\b/i.test(text) && !components.has('feature_cards')) {
+  } else if (/\b(fitur|fitur-fitur|feature|features|benefit|benefits|manfaat|keunggulan|use case|alasan|offer|layanan)\b/i.test(text) && !components.has('feature_cards')) {
     next = upsertCoreComponent(next, fallbackFeatureCards(next, prompt));
   } else if (!SlideQualityValidator.hasRenderableComponent(next, 'body')) {
     next = upsertCoreComponent(next, { type: 'body', text: fallbackBodyForSlide(next, prompt) });
@@ -183,17 +183,17 @@ function makeSlideQualityRepairable(slide: SduiSlide, index: number, prompt: str
 
   next = enrichSparseSlide(next, index, prompt);
 
-  const layoutFamily = layoutFamilyForVariant(next.layout_variant_id);
-  if (layoutFamily === 'text' && !SlideQualityValidator.hasRenderableComponent(next, 'body')) {
+  const layoutId = next.layout_variant_id;
+  if (layoutId === 'gw_poster_statement' && !SlideQualityValidator.hasRenderableComponent(next, 'body')) {
     next = upsertCoreComponent(next, { type: 'body', text: fallbackBodyForSlide(next, prompt) });
   }
-  if (layoutFamily === 'checklist' && !SlideQualityValidator.hasRenderableComponent(next, 'checklist')) {
+  if (layoutId === 'gw_poster_list' && !SlideQualityValidator.hasRenderableComponent(next, 'checklist')) {
     next = upsertCoreComponent(next, { type: 'checklist', items: fallbackChecklistItems(next, prompt) });
   }
-  if (layoutFamily === 'quote' && !SlideQualityValidator.hasRenderableComponent(next, 'quote')) {
+  if (layoutId === 'gw_poster_quote' && !SlideQualityValidator.hasRenderableComponent(next, 'quote')) {
     next = upsertCoreComponent(next, { type: 'quote', text: fallbackBodyForSlide(next, prompt) });
   }
-  if (layoutFamily === 'cta' && !SlideQualityValidator.hasRenderableComponent(next, 'button_cta')) {
+  if (layoutId === 'gw_poster_cta' && !SlideQualityValidator.hasRenderableComponent(next, 'button_cta')) {
     next = {
       ...next,
       nested_groups: {
@@ -220,17 +220,18 @@ function finalizeRenderableSlide(
   textGuardrailOptions: SduiTextGuardrailOptions,
   applyLayoutFieldsFn: (slide: SduiSlide, layoutId: string, source: NonNullable<SduiSlide['layout_source']>) => SduiSlide,
 ): SduiSlide {
-  let next = applyLayoutFieldsFn(slide, slide.layout_variant_id ?? 'text_stack', slide.layout_source ?? 'worker_adjusted');
+  let next = applyLayoutFieldsFn(slide, slide.layout_variant_id ?? 'gw_poster_statement', slide.layout_source ?? 'worker_adjusted');
   const layoutFamily = layoutFamilyForVariant(next.layout_variant_id);
+  const layoutId = next.layout_variant_id;
 
-  if (layoutFamily === 'checklist') {
+  if (layoutId === 'gw_poster_list') {
     next = upsertCoreComponent(next, { type: 'checklist', items: fallbackChecklistItems(next, prompt) });
   }
-  if (layoutFamily === 'text' && !SlideQualityValidator.hasRenderableComponent(next, 'body')) {
+  if (layoutId === 'gw_poster_statement' && !SlideQualityValidator.hasRenderableComponent(next, 'body')) {
     next = upsertCoreComponent(next, { type: 'body', text: fallbackBodyForSlide(next, prompt) });
   }
-  if ((layoutFamily === 'image_focus' || layoutFamily === 'image_split' || layoutFamily === 'editorial') && 
-      next.image_requirement !== 'none' && 
+  if ((layoutFamily === 'photo' || layoutFamily === 'collage') &&
+      next.image_requirement !== 'none' &&
       !SlideQualityValidator.hasImagePlaceholder(next)) {
     next = {
       ...next,

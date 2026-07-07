@@ -10,6 +10,27 @@
 
 export { type ScorableLead } from './scorable-lead.js';
 export { computeScore, roundHalfUp } from './compute-score.js';
+export { computeBusinessValue } from './business-value.js';
+export { computeConfidence } from './confidence.js';
+export { finalizeLeadOpportunityScore } from './finalize.js';
+export { computeLeadOpportunityScore } from './lead-opportunity-score.js';
+export { confidenceModifier } from './modifier.js';
+export { computeReachability } from './reachability.js';
+export { computeWebsiteNeed } from './website-need.js';
+export {
+  LEAD_OPPORTUNITY_SCORING_VERSION,
+  CATEGORY_FIT_BONUS,
+  CATEGORY_NEED_SCORE,
+  WEBSITE_SCORING_WEIGHTS,
+} from './constants.js';
+export type {
+  BusinessValueBreakdown,
+  ConfidenceBreakdown,
+  LeadOpportunityScoringInput,
+  ReachabilityBreakdown,
+  WebsiteNeedBreakdown,
+  WebsiteAuditInput,
+} from './types.js';
 export { ScoreContributionRepository } from './score-contribution-repository.js';
 export {
   ScoringFailureRepository,
@@ -31,3 +52,8 @@ export {
   type TxLeadWriter,
   type TxContributionWriter,
 } from './recompute.js';
+export {
+  backfillLeadScoringBreakdowns,
+  type BackfillLeadScoringBreakdownsReport,
+  type BackfillLeadScoringBreakdownsDeps,
+} from './backfill-lead-scoring-breakdowns.js';

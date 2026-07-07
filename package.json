@@ -12,11 +12,16 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier --write .",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "dev": "concurrently -k -n backend-build,backend-api,frontend -c yellow,cyan,green \"npm run dev --workspace backend\" \"npm run dev:start --workspace backend\" \"npm run dev --workspace frontend\"",
+    "dev:worker": "npm run dev:worker --workspace backend",
+    "dev:backend": "concurrently -k -n backend-build,backend-api -c yellow,cyan \"npm run dev --workspace backend\" \"npm run dev:start --workspace backend\"",
+    "dev:frontend": "npm run dev --workspace frontend"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "8.18.1",
     "@typescript-eslint/parser": "8.18.1",
+    "concurrently": "9.2.1",
     "eslint": "8.57.1",
     "eslint-config-prettier": "9.1.0",
     "prettier": "3.4.2",

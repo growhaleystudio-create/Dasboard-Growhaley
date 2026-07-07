@@ -1,52 +1,58 @@
 import type {
   AppErrorCode,
-  BrandKit,
   CarouselWorkflowArtifact,
   ContentConversationContextMessage,
+  LayoutCatalogItem,
+  SduiComponentType,
   SduiSlide,
 } from '@leads-generator/shared';
+import { LAYOUT_CATALOG } from '@leads-generator/shared';
 import { AppError } from '@/lib/api';
 import { FAILURE_LABEL, HEX_RE } from './content-generator-constants';
-import type {
-  ChatMessage,
-  ExtraTypographyRole,
-  GeneratorConfig,
-  TypographyOverridePayload,
-  TypographyRoleDraft,
-} from './content-generator-types';
-import { EXTRA_TYPOGRAPHY_ROLE_CONFIG } from './content-generator-constants';
+import type { ChatMessage, GeneratorConfig, TypographyOverridePayload } from './content-generator-types';
 
-export const createDefaultExtraTypography = (): Record<ExtraTypographyRole, TypographyRoleDraft> =>
-  EXTRA_TYPOGRAPHY_ROLE_CONFIG.reduce(
-    (acc, config) => ({
-      ...acc,
-      [config.role]: { fontFamily: '', color: config.defaultColor, sizePx: config.defaultSize },
-    }),
-    {} as Record<ExtraTypographyRole, TypographyRoleDraft>,
-  );
-
-export const extraTypographyFromBrandKit = (
-  typography?: BrandKit['typography'],
-): Record<ExtraTypographyRole, TypographyRoleDraft> => {
-  const next = createDefaultExtraTypography();
-  for (const config of EXTRA_TYPOGRAPHY_ROLE_CONFIG) {
-    const source = typography?.[config.role];
-    next[config.role] = {
-      fontFamily: source?.fontFamily ?? '',
-      color: source?.color ?? config.defaultColor,
-      sizePx: source?.sizePx !== undefined ? String(source.sizePx) : config.defaultSize,
-    };
-  }
-  return next;
+// Component types that satisfy the same slot when checking layout
+// compatibility (a layout requiring `checklist` also accepts `numbered_list`).
+const COMPONENT_ALIASES: Record<string, readonly SduiComponentType[]> = {
+  checklist: ['checklist', 'numbered_list'],
+  stat_block: ['stat_block', 'stat_row'],
+  quote: ['quote', 'pull_quote'],
+  feature_cards: ['feature_cards', 'comparison'],
+  image_placeholder: ['image_placeholder'],
 };
 
-export const parsePositiveInt = (value: string, min: number, max: number): number | undefined => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return undefined;
-  const rounded = Math.round(parsed);
-  if (rounded < min || rounded > max) return undefined;
-  return rounded;
-};
+function slideComponentTypes(slide: SduiSlide): Set<string> {
+  const groups = slide.nested_groups;
+  const all = [
+    ...(groups.top_meta ?? []),
+    ...(groups.core_content ?? []),
+    ...(groups.action_footer ?? []),
+  ];
+  return new Set(all.map((c) => c.type));
+}
+
+function satisfiesRequired(item: LayoutCatalogItem, present: Set<string>): boolean {
+  return item.requiredComponents.every((req) => {
+    const accepted = COMPONENT_ALIASES[req] ?? [req];
+    return accepted.some((t) => present.has(t));
+  });
+}
+
+/**
+ * Layout variants the user may switch this slide to, given its current
+ * content. Always includes the current variant. Mirrors the worker's
+ * component-based compatibility (with the same aliases) so a picked layout is
+ * honored on final render instead of silently reshuffled.
+ */
+export function filterCompatibleVariants(slide: SduiSlide): LayoutCatalogItem[] {
+  const present = slideComponentTypes(slide);
+  const compatible = LAYOUT_CATALOG.filter((item) => satisfiesRequired(item, present));
+  const current = slide.layout_variant_id
+    ? LAYOUT_CATALOG.find((i) => i.id === slide.layout_variant_id)
+    : undefined;
+  if (current && !compatible.some((i) => i.id === current.id)) compatible.unshift(current);
+  return compatible;
+}
 
 export const isHex = (value: string) => HEX_RE.test(value);
 export const getErrorMessage = (err: unknown, fallback: string) =>

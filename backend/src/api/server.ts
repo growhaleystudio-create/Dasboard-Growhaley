@@ -14,6 +14,8 @@ import { metricsRoutes, type MetricsRoutesDeps } from './routes/metrics.routes.j
 import { privacyRoutes, type PrivacyRoutesDeps } from './routes/privacy.routes.js';
 import { aiRoutes, type AiRoutesDeps } from './routes/ai.routes.js';
 import { contentRoutes, type ContentRoutesDeps } from './routes/content.routes.js';
+import { surveyRoutes, type SurveyRoutesDeps } from './routes/survey.routes.js';
+import { surveyPublicRoutes, type SurveyPublicRoutesDeps } from './routes/survey-public.routes.js';
 
 export interface AppDeps {
   authGuard: AuthGuardOptions;
@@ -26,6 +28,8 @@ export interface AppDeps {
   privacyRoutes: PrivacyRoutesDeps;
   aiRoutes: AiRoutesDeps;
   contentRoutes: ContentRoutesDeps;
+  surveyRoutes: SurveyRoutesDeps;
+  surveyPublicRoutes: SurveyPublicRoutesDeps;
 }
 
 export function buildServer(deps: AppDeps, opts: FastifyServerOptions = {}): FastifyInstance {
@@ -41,7 +45,7 @@ export function buildServer(deps: AppDeps, opts: FastifyServerOptions = {}): Fas
   // Core Plugins
   app.register(cors, {
     origin: process.env.CORS_ORIGIN
-      ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+      ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
       : process.env.NODE_ENV === 'production'
         ? []
         : true,
@@ -49,25 +53,35 @@ export function buildServer(deps: AppDeps, opts: FastifyServerOptions = {}): Fas
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
   app.register(cookie);
-  
+
   // Custom auth plugin
   app.register(authGuard, deps.authGuard);
 
   // API Routes Registration
-  app.register(async (api) => {
-    api.register(authRoutes(deps.authRoutes), { prefix: '/auth' });
-    api.register(teamRoutes(deps.teamRoutes), { prefix: '/teams' });
-    api.register(inviteAcceptRoutes(deps.teamRoutes), { prefix: '/invites' });
-    
-    // Team-scoped resources
-    api.register(connectorRoutes(deps.connectorRoutes), { prefix: '/teams/:id/connectors' });
-    api.register(scanRoutes(deps.scanRoutes), { prefix: '/teams/:id/scans' });
-    api.register(leadRoutes(deps.leadRoutes), { prefix: '/teams/:id/leads' });
-    api.register(metricsRoutes(deps.metricsRoutes), { prefix: '/teams/:id/metrics' });
-    api.register(privacyRoutes(deps.privacyRoutes), { prefix: '/teams/:id' });
-    api.register(aiRoutes(deps.aiRoutes), { prefix: '/teams/:id/ai' });
-    api.register(contentRoutes(deps.contentRoutes), { prefix: '/teams/:id/content' });
-  }, { prefix: '/api' });
+  app.register(
+    async (api) => {
+      api.register(authRoutes(deps.authRoutes), { prefix: '/auth' });
+      api.register(teamRoutes(deps.teamRoutes), { prefix: '/teams' });
+      api.register(inviteAcceptRoutes(deps.teamRoutes), { prefix: '/invites' });
+
+      // Team-scoped resources
+      api.register(connectorRoutes(deps.connectorRoutes), { prefix: '/teams/:id/connectors' });
+      api.register(scanRoutes(deps.scanRoutes), { prefix: '/teams/:id/scans' });
+      api.register(leadRoutes(deps.leadRoutes), { prefix: '/teams/:id/leads' });
+      api.register(metricsRoutes(deps.metricsRoutes), { prefix: '/teams/:id/metrics' });
+      api.register(privacyRoutes(deps.privacyRoutes), { prefix: '/teams/:id' });
+      api.register(aiRoutes(deps.aiRoutes), { prefix: '/teams/:id/ai' });
+      api.register(contentRoutes(deps.contentRoutes), { prefix: '/teams/:id/content' });
+      api.register(surveyRoutes(deps.surveyRoutes), { prefix: '/teams/:id/surveys' });
+      api.register(surveyPublicRoutes(deps.surveyPublicRoutes), { prefix: '/public/surveys' });
+    },
+    { prefix: '/api' },
+  );
+
+  // Redirect root to frontend to handle default port 3000 access gracefully
+  app.get('/', async (request, reply) => {
+    return reply.redirect(process.env.FRONTEND_URL || 'http://localhost:3001');
+  });
 
   return app;
 }

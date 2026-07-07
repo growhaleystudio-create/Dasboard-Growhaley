@@ -59,9 +59,10 @@ export async function executeLlmRequest(
       });
     } else {
       const targetUrl = `${baseUrl}/v1beta/models/${ctx.textModel}:generateContent`;
-      response = await fetch(`${targetUrl}?key=${encodeURIComponent(apiKey)}`, {
+      response = await fetch(targetUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // Key in header, never the URL query (avoids proxy/CDN log leaks).
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
           contents: [{ parts: [{ text: promptText }] }],
           generationConfig: { temperature: 0.9, topP: 0.95, responseMimeType: 'application/json' },

@@ -24,6 +24,7 @@ import type {
   JobView,
   AspectRatio,
 } from '@leads-generator/shared';
+import { CONTENT_JOB_REAPER_DEADLINE_MS } from '@leads-generator/shared';
 import type { JobFullRow } from '../repository/content-generation-job-repository.js';
 import type { SlideResult } from '../repository/content-generation-slide-repository.js';
 import type { MasterTemplate } from '@leads-generator/shared';
@@ -46,7 +47,6 @@ function makeTemplate(): MasterTemplate {
   return {
     id: 'tmpl-1',
     teamId: 'team-1',
-    brandKitId: 'bk-1',
     allowedBlocks: ['heading', 'body'],
     maxSlides: 5,
     textLimits: [],
@@ -427,6 +427,41 @@ describe('ContentGeneratorService.getJob', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('should not reach');
     expect(result.value.slides[0]!.usedFallbackLayout).toBe(true);
+  });
+
+  it('does NOT reap a pending job younger than the reaper deadline', async () => {
+    const youngPending = makeJobRow({
+      createdAt: new Date(Date.now() - (CONTENT_JOB_REAPER_DEADLINE_MS - 60_000)),
+    });
+    const deps = makeDeps({ findByIdResult: youngPending });
+    const svc = new ContentGeneratorService(deps);
+
+    const result = await svc.getJob('team-1', 'job-1');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('should not reach');
+    expect(result.value.status).toBe('pending');
+    expect(deps.jobRepo.setStatus).not.toHaveBeenCalled();
+  });
+
+  it('reaps a pending job older than the reaper deadline as failed/timeout', async () => {
+    const stalePending = makeJobRow({
+      createdAt: new Date(Date.now() - (CONTENT_JOB_REAPER_DEADLINE_MS + 60_000)),
+    });
+    const reaped = makeJobRow({ status: 'failed', reason: 'timeout' });
+    const deps = makeDeps({ findByIdResult: stalePending });
+    (deps.jobRepo.findById as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(stalePending)
+      .mockResolvedValueOnce(reaped);
+    const svc = new ContentGeneratorService(deps);
+
+    const result = await svc.getJob('team-1', 'job-1');
+
+    expect(deps.jobRepo.setStatus).toHaveBeenCalledWith('team-1', 'job-1', 'failed', 'timeout');
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('should not reach');
+    expect(result.value.status).toBe('failed');
+    expect(result.value.reason).toBe('timeout');
   });
 });
 

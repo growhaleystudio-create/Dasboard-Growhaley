@@ -115,7 +115,7 @@ export class ContentGeneratorClient {
     const url =
       providerKind === 'openai_compatible'
         ? `${baseUrl}/v1/chat/completions`
-        : `${baseUrl}/v1beta/models/${this.textModel}:generateContent?key=${this.apiKey}`;
+        : `${baseUrl}/v1beta/models/${this.textModel}:generateContent`;
 
     // Construct system instructions and prompt
     let systemInstruction =
@@ -190,6 +190,9 @@ export class ContentGeneratorClient {
     const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
     if (providerKind === 'openai_compatible') {
       fetchHeaders['Authorization'] = `Bearer ${this.apiKey}`;
+    } else {
+      // Google GenAI: key in header, never the URL query (avoids log leaks).
+      fetchHeaders['x-goog-api-key'] = this.apiKey;
     }
 
     const fetchBody =
@@ -278,7 +281,7 @@ export class ContentGeneratorClient {
     const url =
       providerKind === 'openai_compatible'
         ? `${baseUrl}/v1/images/generations`
-        : `${baseUrl}/v1beta/models/${this.imageModel}:predict?key=${this.apiKey}`;
+        : `${baseUrl}/v1beta/models/${this.imageModel}:predict`;
 
     const template = options.template;
 
@@ -326,6 +329,9 @@ export class ContentGeneratorClient {
       const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
       if (providerKind === 'openai_compatible') {
         fetchHeaders['Authorization'] = `Bearer ${this.apiKey}`;
+      } else {
+        // Google GenAI: key in header, never the URL query (avoids log leaks).
+        fetchHeaders['x-goog-api-key'] = this.apiKey;
       }
 
       const fetchBody =
@@ -401,7 +407,7 @@ export class ContentGeneratorClient {
     const url =
       providerKind === 'openai_compatible'
         ? `${baseUrl}/v1/chat/completions`
-        : `${baseUrl}/v1beta/models/${this.textModel}:generateContent?key=${this.apiKey}`;
+        : `${baseUrl}/v1beta/models/${this.textModel}:generateContent`;
 
     const parts: any[] = [
       {
@@ -423,6 +429,9 @@ export class ContentGeneratorClient {
     const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
     if (providerKind === 'openai_compatible') {
       fetchHeaders['Authorization'] = `Bearer ${this.apiKey}`;
+    } else {
+      // Google GenAI: key in header, never the URL query (avoids log leaks).
+      fetchHeaders['x-goog-api-key'] = this.apiKey;
     }
 
     const fetchBody =

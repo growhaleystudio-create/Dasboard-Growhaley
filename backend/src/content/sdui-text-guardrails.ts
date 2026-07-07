@@ -52,15 +52,7 @@ function headerSizeFor(
   slide: SduiSlide | undefined,
   typography: SduiTypographyOverride | undefined,
 ): number | undefined {
-  const family = layoutFamilyForVariant(layoutId);
-  const useCoverRole =
-    slide?.slide_type === 'cover' ||
-    family === 'cover' ||
-    layoutId === 'cover_image_full' ||
-    layoutId === 'cover_with_cta' ||
-    layoutId === 'cover-centered' ||
-    layoutId === 'cover-top' ||
-    layoutId === 'cover-bottom';
+  const useCoverRole = slide?.slide_type === 'cover' || layoutId === 'gw_poster_cover';
   if (useCoverRole)
     return cleanSize(typography?.coverSizePx) ?? cleanSize(typography?.headerSizePx);
   return cleanSize(typography?.headerSizePx);
@@ -118,6 +110,7 @@ function limitFor(slide: SduiSlide, options: SduiTextGuardrailOptions): SduiLayo
 const DANGLING_FINAL_WORDS = new Set([
   'agar',
   'akan',
+  'and',
   'atau',
   'by',
   'dalam',
@@ -132,7 +125,9 @@ const DANGLING_FINAL_WORDS = new Set([
   'ke',
   'of',
   'on',
+  'or',
   'pada',
+  'proper',
   'sebagai',
   'sehingga',
   'seperti',
@@ -142,6 +137,7 @@ const DANGLING_FINAL_WORDS = new Set([
   'to',
   'untuk',
   'with',
+  'without',
   'yang',
 ]);
 
@@ -264,7 +260,7 @@ function finishReadableSentence(value: string, shouldFinish: boolean): string {
   return `${clean}.`;
 }
 
-function trimText(
+export function trimText(
   value: string | undefined,
   max: number | undefined,
   options: { finishSentence?: boolean } = {},
@@ -473,25 +469,7 @@ const RICH_SUPPORTING_TYPES = new Set<SduiComponent['type']>([
 ]);
 
 const MIN_MULTI_IMAGE_PLACEHOLDERS: Partial<Record<string, number>> = {
-  dual_image_comparison: 2,
-  product_angle_pair: 2,
-  use_case_gallery_2up: 2,
-  problem_solution_visual_pair: 2,
-  dos_donts_visual_pair: 2,
-  real_estate_room_pair: 2,
-  testimonial_with_portrait_and_product: 2,
-  mini_gallery_3up: 3,
-  step_visual_sequence: 3,
-  app_screen_flow: 3,
-  case_study_snapshot_grid: 3,
-  moodboard_grid: 4,
-  social_proof_wall: 4,
-  event_moment_grid: 4,
-  travel_itinerary_grid: 4,
-  collection_showcase: 4,
-  variant_selector_showcase: 4,
-  outfit_or_style_board: 4,
-  menu_or_food_combo: 4,
+  gw_collage_showcase: 2,
 };
 
 function qualityComponents(slide: SduiSlide): SduiComponent[] {
@@ -594,22 +572,23 @@ export function sduiContentQualityIssues(slides: SduiSlide[]): string[] {
       issues.push(`slide ${slide.slide_number}: missing headline/quote`);
     }
 
-    if (layoutFamily === 'text' && !hasBody && slide.slide_type !== 'cover') {
+    const layoutId = slide.layout_variant_id;
+    if (layoutId === 'gw_poster_statement' && !hasBody && slide.slide_type !== 'cover') {
       issues.push(
         `slide ${slide.slide_number}: layout ${slide.layout_variant_id} expects supporting body content`,
       );
     }
-    if (layoutFamily === 'quote' && !hasQuote) {
+    if (layoutId === 'gw_poster_quote' && !hasQuote) {
       issues.push(
         `slide ${slide.slide_number}: layout ${slide.layout_variant_id} requires non-empty quote`,
       );
     }
-    if (layoutFamily === 'checklist' && !hasChecklist) {
+    if (layoutId === 'gw_poster_list' && !hasChecklist) {
       issues.push(
         `slide ${slide.slide_number}: layout ${slide.layout_variant_id} requires non-empty checklist items`,
       );
     }
-    if (layoutFamily === 'cta' && !hasButton) {
+    if (layoutId === 'gw_poster_cta' && !hasButton) {
       issues.push(
         `slide ${slide.slide_number}: layout ${slide.layout_variant_id} requires non-empty CTA label`,
       );
@@ -727,6 +706,11 @@ export function sduiTextFitIssues(
             `slide ${slide.slide_number}: checklist has too many items (${items.length}/${itemCount})`,
           );
         }
+        if (limits.checklistItemsMin !== undefined && items.length > 0 && items.length < limits.checklistItemsMin) {
+          issues.push(
+            `slide ${slide.slide_number}: checklist too sparse (${items.length}/min ${limits.checklistItemsMin} items) — add more concrete points`,
+          );
+        }
         items.forEach((item, index) => {
           const length = item.trim().length;
           if (length > itemLimit) {
@@ -736,6 +720,26 @@ export function sduiTextFitIssues(
           }
         });
       }
+
+      // Density floor: text far below the layout's minimum leaves the poster
+      // canvas visibly underfilled. Reported as a quality issue so the repair
+      // pass ENRICHES the copy (never pads with filler).
+      const underflow = (
+        kind: 'header' | 'body' | 'quote',
+        min: number | undefined,
+        text: string | undefined,
+      ) => {
+        if (min === undefined || typeof text !== 'string') return;
+        const length = text.trim().length;
+        if (length > 0 && length < min) {
+          issues.push(
+            `slide ${slide.slide_number}: ${kind} too short for this layout (${length}/min ${min}) — enrich the copy or pick a denser layout`,
+          );
+        }
+      };
+      if (component.type === 'header') underflow('header', limits.headerMin, component.text);
+      if (component.type === 'body') underflow('body', limits.bodyMin, component.text);
+      if (component.type === 'quote') underflow('quote', limits.quoteMin, component.text);
     }
   }
   return issues;

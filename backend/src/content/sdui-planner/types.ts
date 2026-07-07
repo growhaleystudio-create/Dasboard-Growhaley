@@ -11,9 +11,11 @@ import type {
   Result,
   LayoutStylePreference,
   ImagePreferenceMode,
+  ApprovedExampleStructure,
 } from '@leads-generator/shared';
 import type { AiCallWrapper } from '../ai-call-wrapper.js';
 import type { TeamAiSettingsService } from '../../auth/team-ai-settings-service.js';
+import type { ExampleRetriever } from '../example-retriever.js';
 
 export interface SduiPlannerInput {
   teamId: string;
@@ -57,14 +59,11 @@ export interface SduiPlannerInput {
   /** The manually chosen reference (for manual mode). */
   chosenReference?: Pick<VisualReference, 'id' | 'name' | 'dna'>;
   /**
-   * When true the planner should prefer editorial-style layouts that
-   * emphasize text hierarchy and storytelling, over data-driven layouts.
+   * Team-approved carousel structures used as few-shot structural templates.
+   * Resolved asynchronously by DefaultSduiPlanner.plan() (via ExampleRetriever)
+   * before buildPrompt is called — buildPrompt itself stays synchronous.
    */
-  preferEditorialLayouts?: boolean;
-  /**
-   * Alias for preferEditorialLayouts. When true, user explicitly requests editorial style.
-   */
-  editorialBias?: boolean;
+  approvedExamples?: ApprovedExampleStructure[] | undefined;
 }
 
 export type SduiPlannerError =
@@ -95,6 +94,12 @@ export interface SduiPlanner {
 export interface SduiPlannerDeps {
   wrapper: AiCallWrapper;
   settings: TeamAiSettingsService;
+  /**
+   * Optional retriever for team-approved example structures. When present,
+   * the planner injects the most relevant approved examples into the prompt
+   * as structural few-shot templates. Absent (e.g. in tests) → no examples.
+   */
+  exampleRetriever?: ExampleRetriever;
 }
 
 // Re-export from shared for convenience

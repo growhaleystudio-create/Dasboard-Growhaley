@@ -139,14 +139,13 @@ secara programatik (belum ada antarmuka HTTP). Contoh kontrak request ada di
 | Sub-task | Deskripsi | Status |
 |---|---|---|
 | 20.1 | Autentikasi & proteksi rute frontend (login, redirect, logout) | ⏳ belum |
-| 20.2 | Dashboard_View (metrik + daftar Lead, pagination, rentang tanggal) | ⏳ belum |
+| 20.2 | Dashboard_View (metrik + daftar Lead, pagination, rentang tanggal, Data Visualization Kit) | 🚧 sebagian |
 | 20.3 | UI pencarian, filter, manajemen Lead + tampilan AI_Insight | ⏳ belum |
 | 20.4 | UI Scan Config + Connector/Team admin + admin AI | ⏳ belum |
 | 21.1 | Performance test daftar Lead (p95 < 2s @100k) & search/filter (p95 < 1s @10k) — opsional | ⏳ belum |
 | 22 | Checkpoint akhir — seluruh test (unit + property + integration + performance) lulus | ⏳ belum |
 
-**Status**: belum berjalan. `frontend/` baru berisi scaffolding (`package.json`,
-`tsconfig.json`); belum ada halaman/komponen.
+**Status**: Sedang berjalan. `frontend/` sudah memiliki kerangka dasar dan *Chart UI Kit* lengkap (MD & XL) terintegrasi pada `Dashboard_View`.
 
 ---
 

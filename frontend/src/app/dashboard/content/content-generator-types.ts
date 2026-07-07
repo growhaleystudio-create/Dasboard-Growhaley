@@ -2,8 +2,6 @@ import type {
   ApprovedExampleStructure,
   AspectRatio,
   BlockType,
-  BrandKit,
-  BrandTypographyRole,
   CarouselWorkflowArtifact,
   ContentConversationContextMessage,
   JobView,
@@ -12,26 +10,14 @@ import type {
   SduiSlide,
 } from '@leads-generator/shared';
 
-export type ActiveTab = 'generate' | 'brand' | 'examples' | 'references';
+export type ActiveTab = 'generate' | 'examples' | 'references';
 export type Phase = 'idle' | 'draft_ready' | 'done';
-
-export type ExtraTypographyRole = Exclude<BrandTypographyRole, 'cover' | 'header' | 'body'>;
-export type TypographyRoleDraft = { fontFamily: string; color: string; sizePx: string };
 
 export interface ExampleItem {
   id: string;
   sourceJobId?: string | null;
   createdAt?: string;
   structure?: ApprovedExampleStructure;
-}
-
-export interface FontDraft {
-  base64: string;
-  family: string;
-  format: 'ttf' | 'otf';
-  fileName: string;
-  weight?: number;
-  style?: 'normal' | 'italic';
 }
 
 export interface DraftResponse {
@@ -114,8 +100,28 @@ export interface GeneratorRequestInput {
 }
 
 export type GeneratorStage = 'active' | 'filled' | 'processing';
-export type ProcessingKind = 'draft' | 'generate' | 'revise' | 'render' | 'slide-revise' | 'preview-revise';
+export type ProcessingKind =
+  | 'draft'
+  | 'generate'
+  | 'revise'
+  | 'render'
+  | 'slide-revise'
+  | 'preview-revise'
+  | 'preview';
 export type JobSlide = JobView['slides'][number];
+
+/** One rendered draft slide from POST /carousel/draft/preview. */
+export interface DraftPreviewItem {
+  slide_number: number;
+  png: string; // data:image/png;base64,...
+  adjusted: boolean;
+  metrics: { contentUsageRatio: number; overflow: boolean };
+}
+
+export interface DraftPreviewResponse {
+  aspectRatio: AspectRatio;
+  items: DraftPreviewItem[];
+}
 
 export interface PreviewSelection {
   slide: JobSlide;

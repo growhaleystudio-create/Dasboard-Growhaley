@@ -97,7 +97,10 @@ export function normalizeRawProspect(
 
   return {
     teamId: ctx.teamId,
+    whatsappVerificationStatus: raw.whatsappVerificationStatus ?? 'unchecked',
     ...publicSlice,
+    ...(isMeaningfulString(raw.whatsappUrl) ? { whatsappUrl: raw.whatsappUrl } : {}),
+    ...(isMeaningfulString(raw.whatsappNumber) ? { whatsappNumber: raw.whatsappNumber } : {}),
     sources: [ctx.sourceId],
     matchedKeywords: [raw.matchedKeyword],
     discoveredAt: raw.acquiredAt,

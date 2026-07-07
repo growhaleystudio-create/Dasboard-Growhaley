@@ -81,7 +81,6 @@ export async function runQualityGate(
     conversationContext: ctx.conversationContext,
     layoutStyle: ctx.layoutStyle,
     imagePreference: ctx.imagePreference,
-    editorialBias: ctx.preferEditorial,
   });
 
   // Apply text guardrails & tags after repair

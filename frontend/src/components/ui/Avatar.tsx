@@ -1,5 +1,6 @@
 import React from 'react';
 import Image from 'next/image';
+import { cn } from '@/lib/utils';
 
 export interface AvatarProps {
   src?: string;
@@ -9,30 +10,26 @@ export interface AvatarProps {
 }
 
 const sizeClasses = {
-  sm: 'w-8 h-8 text-xs',
-  md: 'w-10 h-10 text-base', // 40px
-  lg: 'w-20 h-20 text-2xl', // 80px
+  sm: 'size-8 text-xs',
+  md: 'size-11 text-sm',
+  lg: 'size-20 text-2xl',
 };
 
 export function Avatar({ src, fallback, size = 'md', className = '' }: AvatarProps) {
   const [imgError, setImgError] = React.useState(false);
 
-  const containerClasses = `relative shrink-0 overflow-hidden rounded-full ${sizeClasses[size]} ${
-    !src || imgError ? 'bg-neutral-gray-200 flex items-center justify-center' : ''
-  } ${className}`;
-
   return (
-    <div className={containerClasses}>
+    <div
+      className={cn(
+        'relative shrink-0 overflow-hidden rounded-full border border-stroke-soft-200 bg-bg-accent-soft',
+        sizeClasses[size],
+        className
+      )}
+    >
       {src && !imgError ? (
-        <Image
-          src={src}
-          alt={fallback}
-          fill
-          className="object-cover"
-          onError={() => setImgError(true)}
-        />
+        <Image src={src} alt={fallback} fill className="object-cover" onError={() => setImgError(true)} />
       ) : (
-        <span className="font-inter font-medium text-text-strong-950 uppercase tracking-tight">
+        <span className="flex size-full items-center justify-center font-sans font-bold uppercase tracking-[0.04em] text-primary-accent">
           {fallback.substring(0, 2)}
         </span>
       )}

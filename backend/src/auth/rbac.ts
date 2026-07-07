@@ -34,6 +34,7 @@ export const RBAC_MATRIX: Readonly<Record<Action, Readonly<Record<Role, boolean>
   // Write-shaped actions: Admin and Member yes, Viewer no.
   'lead.write': { admin: true, member: true, viewer: false },
   'lead.status.change': { admin: true, member: true, viewer: false },
+  'lead.whatsapp_verification.change': { admin: true, member: true, viewer: false },
   'note.write': { admin: true, member: true, viewer: false },
   'tag.write': { admin: true, member: true, viewer: false },
   'lead.delete': { admin: true, member: true, viewer: false },
@@ -61,13 +62,20 @@ export const RBAC_MATRIX: Readonly<Record<Action, Readonly<Record<Role, boolean>
   'ai.read_insight': { admin: true, member: true, viewer: true }, // R13.11
 
   // Content carousel rows (R14, R2, R8) — introduced by Task 1.1.
-  // - `content.manage` covers CRUD on Master_Template, BrandKit, and related
+  // - `content.manage` covers CRUD on Master_Template and related
   //   content objects; Admin-only to match the design's Admin privilege for
   //   configuration actions (R2.1, R14.2).
   // - `content.generate` covers triggering a content generation Job; Admin +
   //   Member (R8.1 — both roles can generate content).
   'content.manage': { admin: true, member: false, viewer: false }, // R2.1, R14.2
   'content.generate': { admin: true, member: true, viewer: false }, // R8.1
+
+  // Survey module rows (Quantitative Research Survey V1).
+  'survey.read': { admin: true, member: true, viewer: true },
+  'survey.write': { admin: true, member: true, viewer: false },
+  'survey.publish': { admin: true, member: true, viewer: false },
+  'survey.analyze': { admin: true, member: true, viewer: false },
+  'survey.export': { admin: true, member: false, viewer: false },
 };
 
 /**

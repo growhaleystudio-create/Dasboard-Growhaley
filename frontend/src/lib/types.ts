@@ -1,4 +1,4 @@
-import type { ConnectorDescriptor, Lead, LeadStatus, ScanConfiguration } from '@leads-generator/shared';
+import type { ConnectorDescriptor, Lead, LeadStatus, ScanConfiguration, ScanSummary } from '@leads-generator/shared';
 
 export interface PageResponse<T> {
   items: T[];
@@ -63,4 +63,34 @@ export type ConnectorListItem = ConnectorDescriptor & {
 
 export interface CreateScanResponse {
   configuration: ScanConfiguration;
+}
+
+export type GoogleMapsScrapeSessionStatus =
+  | 'waiting_browser'
+  | 'collecting_results'
+  | 'importing'
+  | 'done'
+  | 'failed';
+
+export interface GoogleMapsScrapeSessionResponse {
+  id: string;
+  teamId: string;
+  keyword: string;
+  location?: string;
+  status: GoogleMapsScrapeSessionStatus;
+  googleMapsUrl: string;
+  summary?: ScanSummary;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+  receivedAt?: string;
+  completedAt?: string;
+}
+
+export interface CreateGoogleMapsScrapeSessionResponse {
+  sessionId: string;
+  status: GoogleMapsScrapeSessionStatus;
+  googleMapsUrl: string;
+  captureToken: string;
+  captureUrl: string;
 }

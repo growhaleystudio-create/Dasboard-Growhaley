@@ -7,10 +7,12 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { PageHeaderSkeleton, Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
+import { Table, TableHeader, TableRow, TableHead, TableCell } from '@/components/ui/Table';
 import { useSession } from '@/lib/useSession';
 import { fetchApi } from '@/lib/api';
 import type { TeamMemberResponse } from '@/lib/types';
-import { KeyRound, UserPlus, Users } from 'lucide-react';
+import { KeyRound, UserPlus, Users, Search } from 'lucide-react';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 export default function AccountPage() {
   const queryClient = useQueryClient();
@@ -19,12 +21,22 @@ export default function AccountPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('viewer');
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('All');
 
   const membersQuery = useQuery({
     queryKey: ['team-members', teamId],
     queryFn: () => fetchApi<TeamMemberResponse[]>(`/api/teams/${teamId}/members`),
     enabled: !!teamId,
   });
+
+  const filteredMembers = React.useMemo(() => {
+    return (membersQuery.data ?? []).filter((member) => {
+      const emailMatch = member.email.toLowerCase().includes(search.toLowerCase());
+      const roleMatch = roleFilter === 'All' || member.role === roleFilter;
+      return emailMatch && roleMatch;
+    });
+  }, [membersQuery.data, search, roleFilter]);
 
   const createMemberMutation = useMutation({
     mutationFn: () =>
@@ -44,23 +56,21 @@ export default function AccountPage() {
     return (
       <div className="flex w-full flex-col gap-5 pb-12">
         <PageHeaderSkeleton />
-        <div className="grid gap-3 rounded-2xl border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)] lg:grid-cols-[minmax(220px,1fr)_minmax(180px,0.8fr)_160px_auto]">
+        <div className="grid gap-3 rounded-2xl border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-none lg:grid-cols-[minmax(220px,1fr)_minmax(180px,0.8fr)_160px_auto]">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />
         </div>
-        <section className="overflow-hidden rounded-2xl border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
+        <section className="overflow-hidden rounded-2xl border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-none">
           <div className="mb-4 flex items-center justify-between">
             <Skeleton className="h-6 w-24" />
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left">
-              <tbody>
-                <TableSkeleton columns={4} />
-              </tbody>
-            </table>
-          </div>
+          <Table className="border-0 shadow-none">
+            <tbody>
+              <TableSkeleton columns={4} />
+            </tbody>
+          </Table>
         </section>
       </div>
     );
@@ -69,71 +79,97 @@ export default function AccountPage() {
 
   return (
     <div className="flex w-full flex-col gap-5 pb-12">
-
-
-      <form
-        className="grid gap-3 rounded-2xl border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)] lg:grid-cols-[minmax(220px,1fr)_minmax(180px,0.8fr)_160px_auto]"
-        onSubmit={(event) => {
-          event.preventDefault();
-          createMemberMutation.mutate();
-        }}
-      >
-        <Input type="email" placeholder="user@company.com" value={email} onChange={(event) => setEmail(event.target.value)} />
-        <Input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          leftIcon={<KeyRound size={16} />}
+      <div className="flex flex-col gap-4">
+        <PageHeader
+          title="Team Members"
+          description="Manage your team accounts, roles, and access permissions."
         />
-        <Select
-          value={role}
-          onChange={(event) => setRole(event.target.value)}
-          options={[
-            { label: 'Viewer', value: 'viewer' },
-            { label: 'Member', value: 'member' },
-            { label: 'Admin', value: 'admin' },
-          ]}
-        />
-        <Button type="submit" leftIcon={<UserPlus size={16} />} disabled={!email || password.length < 8 || createMemberMutation.isPending}>
-          {createMemberMutation.isPending ? 'Creating...' : 'Create'}
-        </Button>
-      </form>
 
-      <section className="overflow-hidden rounded-2xl border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-[0px_1px_2px_rgba(10,13,20,0.03)]">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-medium text-text-strong-950">Users</h2>
-          {createMemberMutation.error && <p className="text-sm text-[#fb3748]">Failed to create account.</p>}
+        <form
+          className="grid gap-3 rounded-2xl border border-stroke-soft-200 bg-bg-white-0 p-4 shadow-none lg:grid-cols-[minmax(220px,1fr)_minmax(180px,0.8fr)_160px_auto]"
+          onSubmit={(event) => {
+            event.preventDefault();
+            createMemberMutation.mutate();
+          }}
+        >
+          <Input type="email" placeholder="user@company.com" value={email} onChange={(event) => setEmail(event.target.value)} />
+          <Input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            leftIcon={<KeyRound size={16} />}
+          />
+          <Select
+            value={role}
+            onChange={(event) => setRole(event.target.value)}
+            options={[
+              { label: 'Viewer', value: 'viewer' },
+              { label: 'Member', value: 'member' },
+              { label: 'Admin', value: 'admin' },
+            ]}
+          />
+          <Button type="submit" leftIcon={<UserPlus size={16} />} disabled={!email || password.length < 8 || createMemberMutation.isPending}>
+            {createMemberMutation.isPending ? 'Creating...' : 'Create'}
+          </Button>
+        </form>
+      </div>
+
+      {/* Table Area */}
+      <div className="mt-2 flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="w-full sm:max-w-[320px]">
+            <Input
+              placeholder="Search members..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              leftIcon={<Search size={16} />}
+            />
+          </div>
+          <Select
+            value={roleFilter}
+            wrapperClassName="w-full sm:w-[160px]"
+            onChange={(e) => setRoleFilter(e.target.value)}
+            options={[
+              { label: 'All roles', value: 'All' },
+              { label: 'Admin', value: 'admin' },
+              { label: 'Member', value: 'member' },
+              { label: 'Viewer', value: 'viewer' },
+            ]}
+          />
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left">
-            <thead>
-              <tr className="bg-bg-weak-50 text-sm text-text-sub-600">
-                <th className="rounded-l-lg px-3 py-2 font-normal">Username / Email</th>
-                <th className="px-3 py-2 font-normal">Role</th>
-                <th className="px-3 py-2 font-normal">Status</th>
-                <th className="rounded-r-lg px-3 py-2 font-normal">User ID</th>
-              </tr>
-            </thead>
-            <tbody>
-              {membersQuery.isLoading ? (
-                <TableSkeleton columns={4} />
-              ) : (membersQuery.data ?? []).length === 0 ? (
-                <tr><td className="px-3 py-8 text-center text-sm text-text-sub-600" colSpan={4}>No users found.</td></tr>
-              ) : (
-                membersQuery.data?.map((member) => (
-                  <tr key={member.id} className="text-sm hover:bg-[#fcfcfd]">
-                    <td className="px-3 py-3 font-medium text-text-strong-950">{member.email}</td>
-                    <td className="px-3 py-3 text-text-sub-600">{member.role}</td>
-                    <td className="px-3 py-3"><Badge variant="success" showDot>{member.status}</Badge></td>
-                    <td className="px-3 py-3 text-xs text-text-sub-600">{member.id}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Username / Email</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>User ID</TableHead>
+            </TableRow>
+          </TableHeader>
+          <tbody>
+            {membersQuery.isLoading ? (
+              <TableSkeleton columns={4} />
+            ) : filteredMembers.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} className="py-8 text-center text-text-sub-600">
+                  No users found matching your search.
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredMembers.map((member) => (
+                <TableRow key={member.id}>
+                  <TableCell className="font-medium text-text-strong-950">{member.email}</TableCell>
+                  <TableCell className="text-text-sub-600 capitalize">{member.role}</TableCell>
+                  <TableCell><Badge variant="success" showDot>{member.status}</Badge></TableCell>
+                  <TableCell className="text-xs text-text-sub-600">{member.id}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </tbody>
+        </Table>
+      </div>
     </div>
   );
 }

@@ -6,11 +6,31 @@ import { TeamAiSettingsRepository } from './repository/team-ai-settings-reposito
 import { AiCallLogRepository } from './repository/ai-call-log-repository.js';
 import { ScoringModelRepository } from './repository/scoring-model-repository.js';
 import { LeadRepository } from './repository/lead-repository.js';
+import { LeadScoringBreakdownRepository } from './repository/lead-scoring-breakdown-repository.js';
 import { DbAuditLog } from './privacy/audit-log.js';
 import { AiBudgetTracker } from './ai/ai-budget-tracker.js';
 import { AiAnalyzerService } from './ai/ai-analyzer-service.js';
-import { GeminiClient } from './ai/gemini-client.js';
-import { createAiWorker, AI_ANALYSIS_QUEUE_NAME, type AiAnalysisJobData, enqueueAiAnalysis } from './ai/ai-worker.js';
+import { AiTextProviderClient } from './ai/ai-text-provider-client.js';
+import { BasicHtmlWebsiteAuditor } from './audit/custom-website-auditor.js';
+import { LeadOpportunityScorer } from './scoring/service/lead-opportunity-scorer.js';
+import {
+  createAiWorker,
+  AI_ANALYSIS_QUEUE_NAME,
+  type AiAnalysisJobData,
+  enqueueAiAnalysis,
+} from './ai/ai-worker.js';
+import {
+  createSurveyAnalysisWorker,
+  SURVEY_ANALYSIS_QUEUE_NAME,
+  type SurveyAnalysisJobData,
+} from './survey/survey-analysis-worker.js';
+import { SurveyRepository } from './repository/survey-repository.js';
+import { SurveyQuestionRepository } from './repository/survey-question-repository.js';
+import { SurveyResponseRepository } from './repository/survey-response-repository.js';
+import { SurveyAnalysisRepository } from './repository/survey-analysis-repository.js';
+import { SurveyAnalyticsService } from './survey/survey-analytics-service.js';
+import { SurveyAnalysisService, sampleOpenEndedAnswers } from './survey/survey-analysis-service.js';
+import { generateSurveyAnalysisWithProvider } from './survey/survey-analysis-ai.js';
 
 import { Connector_Registry } from './connector/registry.js';
 import { TeamConnectorRepository } from './repository/team-connector-repository.js';
@@ -19,6 +39,7 @@ import { RapidApiGoogleConnector } from './connector/rapidapi-google.js';
 import { ExampleGoogleSearchConnector } from './connector/example-google-search.js';
 import { GoogleScraperConnector } from './connector/google-scraper.js';
 import { SocialApiConnector } from './connector/social-api-connectors.js';
+import { GoogleMapsHeadlessConnector } from './connector/google-maps-headless.js';
 
 import { ScanJobRepository } from './repository/scan-job-repository.js';
 import { OutboxRepository } from './scoring/outbox-repository.js';
@@ -31,14 +52,21 @@ import { ScoreContributionRepository } from './scoring/score-contribution-reposi
 import { ScoringFailureRepository } from './scoring/scoring-failure-repository.js';
 import { runScanJob } from './scan/scan-job-runner.js';
 import { JobScheduler } from './scan/job-scheduler.js';
+import {
+  createGoogleMapsScrapeWorker,
+  type GoogleMapsScrapeJobData,
+  projectScorableLead,
+} from './scraping/google-maps-scrape-worker.js';
+import { withTransaction } from './db/transaction.js';
 
 // Carousel content generation worker
-import { BrandKitRepository } from './repository/brand-kit-repository.js';
 import { MasterTemplateRepository } from './repository/master-template-repository.js';
 import { ContentGenerationJobRepository } from './repository/content-generation-job-repository.js';
 import { ContentGenerationSlideRepository } from './repository/content-generation-slide-repository.js';
 import { AiCallWrapper } from './content/ai-call-wrapper.js';
 import { DefaultSduiPlanner } from './content/sdui-planner/index.js';
+import { DefaultExampleRetriever } from './content/example-retriever.js';
+import { ApprovedExampleRepository } from './repository/approved-example-repository.js';
 import { SatoriRenderer } from './content/satori-renderer.js';
 import { createSduiCarouselWorker } from './content/sdui-carousel-worker.js';
 import { createObjectStorageFromEnv } from './storage/object-storage.js';
@@ -52,9 +80,15 @@ async function startWorker() {
   const redisClient = useRedisWorkers ? createRedisClient(env.REDIS_URL) : null;
 
   if (!redisClient) {
-    console.warn('⚠️  Development mode: BullMQ workers are disabled because Redis is not required locally.');
-    console.warn('⚠️  Content generation should run through the backend in-process fallback runner.');
-    console.warn('⚠️  Start the standalone worker only when Redis is available and NODE_ENV is not development.');
+    console.warn(
+      '⚠️  Development mode: BullMQ workers are disabled because Redis is not required locally.',
+    );
+    console.warn(
+      '⚠️  Content generation should run through the backend in-process fallback runner.',
+    );
+    console.warn(
+      '⚠️  Start the standalone worker only when Redis is available and NODE_ENV is not development.',
+    );
     await dbPool.end();
     return;
   }
@@ -74,6 +108,7 @@ async function startWorker() {
     connectorRegistry.register(new ExampleGoogleSearchConnector());
   }
   connectorRegistry.register(new GoogleScraperConnector());
+  connectorRegistry.register(new GoogleMapsHeadlessConnector());
   connectorRegistry.register(new SocialApiConnector('threads', 'Threads'));
   connectorRegistry.register(new SocialApiConnector('linkedin', 'LinkedIn'));
   connectorRegistry.register(new SocialApiConnector('instagram', 'Instagram'));
@@ -85,53 +120,59 @@ async function startWorker() {
 
   const aiQueue = new Queue<AiAnalysisJobData>(AI_ANALYSIS_QUEUE_NAME, { connection: redisClient });
   const enqueueAi = async (teamId: string, leadId: string, trigger: 'scan' | 'manual') => {
-    await enqueueAiAnalysis(aiQueue, { teamId, leadId, trigger });
+    await enqueueAiAnalysis(aiQueue, { teamId, leadId, trigger, action: 'analyze_scan' });
   };
 
   const scheduler = new JobScheduler({
     loadScheduled: () => scanConfigRepo.loadScheduled(),
     jobs: scanJobRepo,
-    runScan: (input) => runScanJob({
-      pool: dbPool,
-      jobs: scanJobRepo,
-      outbox: outboxRepo,
-      enqueueAi,
-      scan: {
-        registry: connectorRegistry,
-        loadModel: async (teamId) => {
-          return scoringModelRepo.getForTeam(teamId);
+    runScan: (input) =>
+      runScanJob(
+        {
+          pool: dbPool,
+          jobs: scanJobRepo,
+          outbox: outboxRepo,
+          enqueueAi,
+          scan: {
+            registry: connectorRegistry,
+            loadModel: async (teamId) => {
+              return scoringModelRepo.getForTeam(teamId);
+            },
+            pipeline: {
+              dedup: (tx) =>
+                new DeduplicationService({
+                  leads: new LeadRepository(tx),
+                  finder: new SqlCanonicalLeadFinder(tx),
+                }),
+              scorer: (tx) =>
+                new LeadScoringPersister({
+                  leads: new LeadRepository(tx),
+                  contributions: new ScoreContributionRepository(),
+                  failures: new ScoringFailureRepository(),
+                  outbox: new OutboxRepository(),
+                }),
+              project: (leadId, normalized) => {
+                const lead: ScorableLead = {
+                  teamId: normalized.teamId,
+                  matchedKeywords: normalized.matchedKeywords,
+                  sources: normalized.sources,
+                  discoveredAt: normalized.discoveredAt,
+                  referenceTime: new Date(),
+                  aiIntentScore: null,
+                };
+                if (normalized.location !== null && normalized.location !== undefined) {
+                  lead.location = normalized.location;
+                }
+                if (normalized.publicContact !== null && normalized.publicContact !== undefined) {
+                  lead.publicContact = normalized.publicContact;
+                }
+                return lead;
+              },
+            },
+          },
         },
-        pipeline: {
-          dedup: (tx) => new DeduplicationService({
-            leads: new LeadRepository(tx),
-            finder: new SqlCanonicalLeadFinder(tx)
-          }),
-          scorer: (tx) => new LeadScoringPersister({
-            leads: new LeadRepository(tx),
-            contributions: new ScoreContributionRepository(),
-            failures: new ScoringFailureRepository(),
-            outbox: new OutboxRepository()
-          }),
-          project: (leadId, normalized) => {
-            const lead: ScorableLead = {
-              teamId: normalized.teamId,
-              matchedKeywords: normalized.matchedKeywords,
-              sources: normalized.sources,
-              discoveredAt: normalized.discoveredAt,
-              referenceTime: new Date(),
-              aiIntentScore: null,
-            };
-            if (normalized.location !== null && normalized.location !== undefined) {
-              lead.location = normalized.location;
-            }
-            if (normalized.publicContact !== null && normalized.publicContact !== undefined) {
-              lead.publicContact = normalized.publicContact;
-            }
-            return lead;
-          }
-        }
-      }
-    }, input)
+        input,
+      ),
   });
 
   const scanWorker = new Worker(
@@ -147,26 +188,117 @@ async function startWorker() {
 
   const vault = createCredentialVault(env);
   const aiSettingsRepo = new TeamAiSettingsRepository(dbPool);
-  const teamAiSettings = new TeamAiSettingsService(aiSettingsRepo, vault);
+  const teamAiSettings = new TeamAiSettingsService(aiSettingsRepo, vault, env.CENTRAL_AI_TEAM_ID);
   const leadsRepo = new LeadRepository(dbPool);
+  const scoringBreakdownRepo = new LeadScoringBreakdownRepository(dbPool);
+  const websiteAuditor = new BasicHtmlWebsiteAuditor();
+  const aiBudget = new AiBudgetTracker({
+    settings: aiSettingsRepo,
+    callLog: new AiCallLogRepository(dbPool),
+  });
+  const leadOpportunityScorer = new LeadOpportunityScorer({
+    pool: dbPool,
+    leadReads: leadsRepo,
+    auditor: websiteAuditor,
+  });
 
   const aiAnalyzer = new AiAnalyzerService({
     pool: dbPool,
     settings: teamAiSettings,
-    budget: new AiBudgetTracker({
-      settings: aiSettingsRepo,
-      callLog: new AiCallLogRepository(dbPool),
-    }),
-    providerFactory: (apiKey, apiBaseUrl, model) => new GeminiClient(apiKey, apiBaseUrl, model),
+    budget: aiBudget,
+    providerFactory: (apiKey, apiBaseUrl, model) =>
+      new AiTextProviderClient(apiKey, apiBaseUrl, model),
     leads: leadsRepo,
+    breakdowns: scoringBreakdownRepo,
     audit: new DbAuditLog(dbPool),
-    models: scoringModelRepo,
-    projectScorable: async (leadId) => null,
   });
 
   const aiWorker = createAiWorker({
     analyzer: aiAnalyzer,
     redisUrl: env.REDIS_URL,
+  });
+
+  const surveyRepo = new SurveyRepository(dbPool);
+  const surveyQuestionRepo = new SurveyQuestionRepository(dbPool);
+  const surveyResponseRepo = new SurveyResponseRepository(dbPool);
+  const surveyAnalysisRepo = new SurveyAnalysisRepository(dbPool);
+  const surveyAnalytics = new SurveyAnalyticsService(
+    surveyRepo,
+    surveyQuestionRepo,
+    surveyResponseRepo,
+  );
+  const surveyAnalysisService = new SurveyAnalysisService({
+    surveys: surveyRepo,
+    questions: surveyQuestionRepo,
+    responses: surveyResponseRepo,
+    analyses: surveyAnalysisRepo,
+    analytics: surveyAnalytics,
+    settings: teamAiSettings,
+    audit: new DbAuditLog(dbPool),
+    queue: new Queue<SurveyAnalysisJobData>(SURVEY_ANALYSIS_QUEUE_NAME, {
+      connection: redisClient,
+    }),
+    generateResult: async (context) => {
+      const questionKey =
+        context.analysis.scope === 'question'
+          ? context.questions.find((question) => question.id === context.analysis.questionId)
+              ?.questionKey
+          : undefined;
+      return generateSurveyAnalysisWithProvider(teamAiSettings, {
+        teamId: context.survey!.teamId,
+        survey: {
+          title: context.survey!.title,
+          projectGoal: context.survey!.projectGoal,
+          ...(context.survey!.description ? { description: context.survey!.description } : {}),
+          ...(context.survey!.backgroundContext
+            ? { backgroundContext: context.survey!.backgroundContext }
+            : {}),
+          ...(context.survey!.targetParticipant
+            ? { targetParticipant: context.survey!.targetParticipant }
+            : {}),
+          ...(context.survey!.primaryDecision
+            ? { primaryDecision: context.survey!.primaryDecision }
+            : {}),
+        },
+        questions: context.questions.map((question) => ({
+          id: question.id,
+          key: question.questionKey,
+          type: question.type,
+          title: question.title,
+          required: question.required,
+          config: question.config,
+        })),
+        analytics: context.analytics,
+        openEndedSamples: sampleOpenEndedAnswers(context.responses, questionKey),
+        analysis: context.analysis,
+      });
+    },
+    modelName: async (teamId) => (await teamAiSettings.getSettings(teamId)).textModel,
+  });
+  const surveyAnalysisWorker = createSurveyAnalysisWorker({
+    redisUrl: env.REDIS_URL,
+    runAnalysis: (data) => surveyAnalysisService.processJob(data),
+  });
+
+  const googleMapsScrapeWorker = createGoogleMapsScrapeWorker({
+    redisUrl: env.REDIS_URL,
+    runInTx: async (fn) => withTransaction(dbPool, fn),
+    loadModel: async (teamId) => scoringModelRepo.getForTeam(teamId),
+    pipeline: {
+      dedup: (tx) =>
+        new DeduplicationService({
+          leads: new LeadRepository(tx),
+          finder: new SqlCanonicalLeadFinder(tx),
+        }),
+      scorer: (tx) =>
+        new LeadScoringPersister({
+          leads: new LeadRepository(tx),
+          contributions: new ScoreContributionRepository(),
+          failures: new ScoringFailureRepository(),
+          outbox: new OutboxRepository(),
+        }),
+      project: projectScorableLead,
+    },
   });
 
   scanWorker.on('completed', (job) => {
@@ -185,16 +317,33 @@ async function startWorker() {
     console.log(`AI analysis job ${job?.id} failed with error: ${err.message}`);
   });
 
+  surveyAnalysisWorker.on('completed', (job) => {
+    console.log(`Survey analysis job ${job.id} completed successfully`);
+  });
+
+  surveyAnalysisWorker.on('failed', (job, err) => {
+    console.log(`Survey analysis job ${job?.id} failed with error: ${err.message}`);
+  });
+
+  googleMapsScrapeWorker.on('completed', (job, result) => {
+    console.log(`Google Maps scrape job ${job.id} completed successfully`, result);
+  });
+
+  googleMapsScrapeWorker.on('failed', (job, err) => {
+    console.log(`Google Maps scrape job ${job?.id} failed with error: ${err.message}`);
+  });
+
   // ---------------------------------------------------------------------------
   // Carousel Content Generation Worker
   // ---------------------------------------------------------------------------
-  const carouselObjectStorage = env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY
-    ? createObjectStorageFromEnv({
-        SUPABASE_URL: env.SUPABASE_URL,
-        SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
-        SUPABASE_BUCKET: env.SUPABASE_BUCKET,
-      } as { SUPABASE_URL: string; SUPABASE_SERVICE_ROLE_KEY: string; SUPABASE_BUCKET: string })
-    : null;
+  const carouselObjectStorage =
+    env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY
+      ? createObjectStorageFromEnv({
+          SUPABASE_URL: env.SUPABASE_URL,
+          SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
+          SUPABASE_BUCKET: env.SUPABASE_BUCKET,
+        } as { SUPABASE_URL: string; SUPABASE_SERVICE_ROLE_KEY: string; SUPABASE_BUCKET: string })
+      : null;
 
   if (!carouselObjectStorage) {
     console.warn('⚠️  Carousel worker: SUPABASE credentials missing — carousel rendering disabled');
@@ -204,15 +353,27 @@ async function startWorker() {
       callLog: new AiCallLogRepository(dbPool),
     });
     const aiCallWrapper = new AiCallWrapper(
-      { settings: teamAiSettings, budget: aiBudget, callLog: new AiCallLogRepository(dbPool), audit: new DbAuditLog(dbPool) },
+      {
+        settings: teamAiSettings,
+        budget: aiBudget,
+        callLog: new AiCallLogRepository(dbPool),
+        audit: new DbAuditLog(dbPool),
+      },
       dbPool,
     );
-    const sduiPlanner = new DefaultSduiPlanner({ wrapper: aiCallWrapper, settings: teamAiSettings });
-    const brandKitRepo = new BrandKitRepository(dbPool);
+    const sduiPlanner = new DefaultSduiPlanner({
+      wrapper: aiCallWrapper,
+      settings: teamAiSettings,
+      exampleRetriever: new DefaultExampleRetriever(new ApprovedExampleRepository(dbPool)),
+    });
     const masterTemplateRepo = new MasterTemplateRepository(dbPool);
     const contentGenerationJobRepo = new ContentGenerationJobRepository(dbPool);
     const contentGenerationSlideRepo = new ContentGenerationSlideRepository(dbPool);
-    const bgClient = new DefaultBackgroundImageClient({ wrapper: aiCallWrapper, settings: teamAiSettings, urlGuard: new UrlSafetyGuardImpl() });
+    const bgClient = new DefaultBackgroundImageClient({
+      wrapper: aiCallWrapper,
+      settings: teamAiSettings,
+      urlGuard: new UrlSafetyGuardImpl(),
+    });
     const satoriRenderer = new SatoriRenderer();
 
     const carouselWorker = createSduiCarouselWorker({
@@ -223,7 +384,6 @@ async function startWorker() {
       jobRepo: contentGenerationJobRepo,
       slideRepo: contentGenerationSlideRepo,
       masterTemplateRepo,
-      brandKitRepo,
       redisUrl: env.REDIS_URL,
     });
 
@@ -247,7 +407,13 @@ async function startWorker() {
 
   async function shutdown() {
     console.log('Shutting down workers...');
-    await Promise.all([scanWorker.close(), aiWorker.close(), aiQueue.close()]);
+    await Promise.all([
+      scanWorker.close(),
+      aiWorker.close(),
+      surveyAnalysisWorker.close(),
+      googleMapsScrapeWorker.close(),
+      aiQueue.close(),
+    ]);
     await dbPool.end();
     redisClient?.disconnect();
     process.exit(0);

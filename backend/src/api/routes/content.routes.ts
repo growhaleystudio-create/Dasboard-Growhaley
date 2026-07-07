@@ -4,7 +4,6 @@ import { randomUUID } from 'crypto';
 import { LAYOUT_VARIANT_IDS } from '@leads-generator/shared';
 import type {
   AppError,
-  BrandFontInput,
   BlockType,
   CarouselWorkflowArtifact,
   MasterTemplateRules,
@@ -13,6 +12,9 @@ import type {
 } from '@leads-generator/shared';
 import type { GenerateRequest } from '../../content/content-generator-service.js';
 import { buildCarouselWorkflowArtifact } from '../../content/carousel-workflow.js';
+import { GROWHALEY_BRAND_KIT } from '../../content/growhaley-brand.js';
+import { buildGrowhaleyDocument, withPreviewPlaceholders } from '../../content/preview-document.js';
+import { applySduiTextGuardrails } from '../../content/sdui-text-guardrails.js';
 import { withTransaction } from '../../db/transaction.js';
 import { ContentTemplateRepository } from '../../repository/content-template-repository.js';
 import { ContentGenerationRepository } from '../../repository/content-generation-repository.js';
@@ -20,7 +22,6 @@ import { uploadToSupabaseStorage } from '../../content/supabase-storage.js';
 import type { TeamAiSettingsService } from '../../auth/team-ai-settings-service.js';
 import type { AiBudgetTracker } from '../../ai/ai-budget-tracker.js';
 import type { AuditLog } from '../../privacy/audit-log.js';
-import type { BrandKitService } from '../../content/brand-kit-service.js';
 import type { MasterTemplateService } from '../../content/master-template-service.js';
 import type { ContentGeneratorService } from '../../content/content-generator-service.js';
 import type { ApprovedExampleService } from '../../content/approved-example-service.js';
@@ -31,12 +32,13 @@ export interface ContentRoutesDeps {
   budget: AiBudgetTracker;
   audit: Pick<AuditLog, 'recordTx'>;
   // New deps for carousel routes
-  brandKitService: BrandKitService;
   masterTemplateService: MasterTemplateService;
   contentGeneratorService: ContentGeneratorService;
   approvedExampleService: ApprovedExampleService;
   // SDUI planner for draft/revise endpoints (Fase 2)
   sduiPlanner?: import('../../content/sdui-planner/index.js').SduiPlanner;
+  // Satori renderer for /draft/preview (renders draft slides to PNG, no image gen)
+  renderer?: import('../../content/satori-renderer.js').SatoriRenderer;
   // Visual Reference (Fase 3)
   visualRefRepo?: import('../../repository/visual-reference-repository.js').VisualReferenceRepository;
   visualDnaExtractor?: import('../../content/visual-dna-extractor.js').VisualDnaExtractor;
@@ -59,16 +61,6 @@ const TemplateCreateSchema = z.object({
   referenceImages: z.array(z.string()).optional(),
 });
 
-// ---------------------------------------------------------------------------
-// Brand Kit schema: accept JSON body with base64-encoded logo and font bytes
-// ---------------------------------------------------------------------------
-
-const BrandTextRoleSchema = z.object({
-  fontFamily: z.string().default(''),
-  color: z.string(),
-  sizePx: z.number().int().min(8).max(180).optional(),
-});
-
 const ContentTagsSchema = z.array(z.string().trim().min(1).max(48)).max(10).optional();
 
 const ConversationContextSchema = z
@@ -85,53 +77,6 @@ const ConversationContextSchema = z
   })
   .optional();
 
-const BrandKitSchema = z.object({
-  logo: z
-    .object({
-      base64: z.string(),
-      contentType: z.string().default('image/png'),
-    })
-    .optional(),
-  fonts: z
-    .array(
-      z.object({
-        base64: z.string(),
-        family: z.string(),
-        format: z.enum(['ttf', 'otf']),
-        weight: z.number().optional(),
-        style: z.enum(['normal', 'italic']).optional(),
-      }),
-    )
-    .default([]),
-  colors: z.array(z.string()).min(1),
-  chrome: z.object({
-    logoPlacement: z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right', 'none']),
-    logoSizePx: z.number().int().min(12).max(180).optional(),
-    pageNumberFormat: z.string(),
-    siteUrl: z.string(),
-  }),
-  typography: z
-    .object({
-      cover: BrandTextRoleSchema.optional(),
-      header: BrandTextRoleSchema,
-      body: BrandTextRoleSchema,
-      tag: BrandTextRoleSchema.optional(),
-      quote: BrandTextRoleSchema.optional(),
-      list: BrandTextRoleSchema.optional(),
-      cta: BrandTextRoleSchema.optional(),
-      card: BrandTextRoleSchema.optional(),
-      stat: BrandTextRoleSchema.optional(),
-      caption: BrandTextRoleSchema.optional(),
-      chrome: BrandTextRoleSchema.optional(),
-      highlightColor: z.string(),
-      background: z.string(),
-      paginationColor: z.string(),
-      metaTextColor: z.string(),
-      accent: z.string(),
-    })
-    .optional(),
-});
-
 // ---------------------------------------------------------------------------
 // Zod Schemas
 // ---------------------------------------------------------------------------
@@ -140,19 +85,24 @@ const BrandKitSchema = z.object({
 type LayoutVariantId = string;
 const LAYOUT_STYLE_VALUES = [
   'auto',
-  'scrapbook',
-  'editorial',
-  'bento',
-  'timeline',
-  'comparison',
-  'ui_mockup',
-  'chart',
-  'seamless',
-  'alternating_contrast',
+  'poster',
+  'photo',
+  'collage',
 ] as const satisfies readonly LayoutStylePreference[];
 const IMAGE_PREFERENCE_VALUES = ['auto', 'all_slides_image'] as const satisfies readonly ImagePreferenceMode[];
 
 const SDUI_LAYOUT_VARIANTS = LAYOUT_VARIANT_IDS as readonly [LayoutVariantId, ...LayoutVariantId[]];
+
+const GwCompositionSchema = z
+  .object({
+    palette: z.enum(['lime', 'cream', 'blue', 'ink']).optional(),
+    accent: z.enum(['magenta', 'blue', 'lime', 'cream']).optional(),
+    headerComposition: z.enum(['staggered', 'left', 'center', 'right']).optional(),
+    blob: z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center', 'none']).optional(),
+    ornaments: z.enum(['none', 'minimal', 'rich']).optional(),
+    scatter: z.enum(['cascade', 'zigzag', 'stack']).optional(),
+  })
+  .optional();
 
 const TypographyOverrideSchema = z.object({
   coverSizePx: z.number().int().min(12).max(180).optional(),
@@ -162,6 +112,49 @@ const TypographyOverrideSchema = z.object({
 
 const LayoutStyleSchema = z.enum(LAYOUT_STYLE_VALUES).optional();
 const ImagePreferenceSchema = z.enum(IMAGE_PREFERENCE_VALUES).optional();
+
+// Shared slide-shape schemas used by /draft/revise and /draft/preview (both
+// accept an already-planned deck the user has edited).
+const SduiComponentSchema = z.object({
+  type: z.string(),
+  text: z.string().optional(),
+  highlight: z.string().optional(),
+  label: z.string().optional(),
+  items: z.array(z.string()).optional(),
+  style: z.enum(['primary', 'secondary']).optional(),
+  requires_generation: z.boolean().optional(),
+  asset_type: z.string().optional(),
+  image_object_context: z.string().optional(),
+  imageUrl: z.string().optional(),
+  heightPercent: z.number().optional(),
+  align: z.enum(['left', 'center', 'right']).optional(),
+  verticalAlign: z.enum(['top', 'center', 'bottom']).optional(),
+  textTransform: z.enum(['uppercase', 'none']).optional(),
+});
+const SduiSlideSchema = z.object({
+  slide_number: z.number().int().min(1),
+  slide_type: z.enum(['cover', 'content']),
+  container_layout: z.enum(['text_dominant', 'split_screen', 'background_overlay']),
+  layout_variant_id: z.enum(SDUI_LAYOUT_VARIANTS).optional(),
+  layout_family: z.enum(['poster', 'photo', 'collage']).optional(),
+  composition: GwCompositionSchema,
+  layout_style: LayoutStyleSchema,
+  image_preference: ImagePreferenceSchema,
+  image_requirement: z.enum(['required', 'optional', 'none']).optional(),
+  layout_source: z
+    .enum(['ai_selected', 'worker_adjusted', 'ai_repaired_after_image_failure'])
+    .optional(),
+  image_status: z.enum(['not_needed', 'generated', 'provider_failed_repaired']).optional(),
+  typography_scale: z
+    .enum(['editorial_bold', 'balanced_classic', 'information_dense'])
+    .optional(),
+  contentDirection: z.enum(['column', 'row']).optional(),
+  nested_groups: z.object({
+    top_meta: z.array(SduiComponentSchema).optional(),
+    core_content: z.array(SduiComponentSchema).optional(),
+    action_footer: z.array(SduiComponentSchema).optional(),
+  }),
+});
 
 const GenerateRequestSchema = z.object({
   prompt: z.string().min(1).max(2000),
@@ -179,23 +172,8 @@ const GenerateRequestSchema = z.object({
         slide_type: z.enum(['cover', 'content']),
         container_layout: z.enum(['text_dominant', 'split_screen', 'background_overlay']),
         layout_variant_id: z.enum(SDUI_LAYOUT_VARIANTS).optional(),
-        layout_family: z
-          .enum([
-            'cover',
-            'text',
-            'checklist',
-            'quote',
-            'stat',
-            'cta',
-            'image_split',
-            'image_stack',
-            'image_focus',
-            'cards',
-            'comparison',
-            'multi_image',
-            'editorial',
-          ])
-          .optional(),
+        layout_family: z.enum(['poster', 'photo', 'collage']).optional(),
+        composition: GwCompositionSchema,
         image_requirement: z.enum(['required', 'optional', 'none']).optional(),
         layout_source: z
           .enum(['ai_selected', 'worker_adjusted', 'ai_repaired_after_image_failure'])
@@ -297,7 +275,6 @@ const TextLengthLimitSchema = z.object({
 });
 
 const MasterTemplateSchema = z.object({
-  brandKitId: z.string().min(1),
   allowedBlocks: z
     .array(
       z.enum(['heading', 'body', 'mockup', 'chart', 'quote', 'stat', 'bullet', 'cta', 'image']),
@@ -336,7 +313,6 @@ const INTERNAL_DEFAULT_TEMPLATE_RULES = {
   ]),
   aspectRatios: new Set(['1:1', '4:5', '9:16'] as const),
   defaultTone: 'professional',
-  brandKitId: 'internal-defaults',
 } satisfies MasterTemplateRules;
 
 async function templateRulesOrDefaults(
@@ -571,74 +547,6 @@ export const contentRoutes =
       },
     );
 
-    // ==========================================================================
-    // BRAND KIT routes (Task 20.1)
-    // ==========================================================================
-
-    // PUT /brand-kit — save brand kit (JSON with base64 assets); RBAC content.manage
-    fastify.put(
-      '/brand-kit',
-      {
-        preHandler: [
-          fastify.requireAuth,
-          fastify.requireTeamId,
-          fastify.requireRole('content.manage'),
-        ],
-      },
-      async (request, reply) => {
-        const params = request.params as { id: string };
-        const parsed = BrandKitSchema.safeParse(request.body);
-        if (!parsed.success) {
-          throw appError({
-            code: 'VALIDATION',
-            messages: parsed.error.errors.map((e) => e.message),
-          });
-        }
-
-        const data = parsed.data;
-
-        // Convert base64 → Buffer when assets are provided.
-        const logo = data.logo
-          ? { bytes: Buffer.from(data.logo.base64, 'base64'), contentType: data.logo.contentType }
-          : undefined;
-        const fontInputs = data.fonts.map((f) => {
-          const fontInput: BrandFontInput = {
-            bytes: Buffer.from(f.base64, 'base64'),
-            family: f.family,
-            format: f.format,
-          };
-          if (f.weight !== undefined) fontInput.weight = f.weight;
-          if (f.style !== undefined) fontInput.style = f.style;
-          return fontInput;
-        });
-
-        const actorId = request.session!.userId;
-        const result = await deps.brandKitService.save(params.id, actorId, {
-          fonts: fontInputs,
-          colors: data.colors,
-          chrome: data.chrome,
-          ...(logo ? { logo } : {}),
-          ...(data.typography ? { typography: data.typography } : {}),
-        });
-
-        if (!result.ok) mapResultError(result.error);
-        return reply.status(200).send(result.value);
-      },
-    );
-
-    // GET /brand-kit — get brand kit; requireAuth+requireTeamId (any role can read)
-    fastify.get(
-      '/brand-kit',
-      {
-        preHandler: [fastify.requireAuth, fastify.requireTeamId],
-      },
-      async (request, reply) => {
-        const params = request.params as { id: string };
-        const result = await deps.brandKitService.get(params.id);
-        if (!result.ok) mapResultError(result.error);
-        return reply.status(200).send(result.value);
-      },
-    );
 
     // ==========================================================================
     // MASTER TEMPLATE routes (Task 20.1)
@@ -708,7 +616,6 @@ export const contentRoutes =
           })),
           aspectRatios: [...rules.aspectRatios],
           defaultTone: rules.defaultTone,
-          brandKitId: rules.brandKitId,
         });
       },
     );
@@ -951,17 +858,10 @@ export const contentRoutes =
           const kind = planResult.error.kind;
           throw appError({ code: 'INTERNAL', message: `Planning failed: ${kind}` });
         }
-        const brandKitResult = await deps.brandKitService.get(params.id);
-        if (!brandKitResult.ok) mapResultError(brandKitResult.error);
-        if (!brandKitResult.value)
-          throw appError({
-            code: 'VALIDATION',
-            messages: ['Brand Kit wajib dikonfigurasi terlebih dahulu'],
-          });
         const workflow = buildCarouselWorkflowArtifact({
           prompt: parsed.data.prompt,
           slides: planResult.value.slides,
-          brandKit: brandKitResult.value,
+          brandKit: GROWHALEY_BRAND_KIT,
           source: 'planning',
           stage: 'prompts',
         });
@@ -987,61 +887,6 @@ export const contentRoutes =
       async (request, reply) => {
         const params = request.params as { id: string };
 
-        const SduiComponentSchema = z.object({
-          type: z.string(),
-          text: z.string().optional(),
-          highlight: z.string().optional(),
-          label: z.string().optional(),
-          items: z.array(z.string()).optional(),
-          style: z.enum(['primary', 'secondary']).optional(),
-          requires_generation: z.boolean().optional(),
-          asset_type: z.string().optional(),
-          image_object_context: z.string().optional(),
-          imageUrl: z.string().optional(),
-          heightPercent: z.number().optional(),
-          align: z.enum(['left', 'center', 'right']).optional(),
-          verticalAlign: z.enum(['top', 'center', 'bottom']).optional(),
-          textTransform: z.enum(['uppercase', 'none']).optional(),
-        });
-        const SduiSlideSchema = z.object({
-          slide_number: z.number().int().min(1),
-          slide_type: z.enum(['cover', 'content']),
-          container_layout: z.enum(['text_dominant', 'split_screen', 'background_overlay']),
-          layout_variant_id: z.enum(SDUI_LAYOUT_VARIANTS).optional(),
-          layout_family: z
-            .enum([
-              'cover',
-              'text',
-              'checklist',
-              'quote',
-              'stat',
-              'cta',
-              'image_split',
-              'image_stack',
-              'image_focus',
-              'cards',
-              'comparison',
-              'multi_image',
-              'editorial',
-            ])
-            .optional(),
-          layout_style: LayoutStyleSchema,
-          image_preference: ImagePreferenceSchema,
-          image_requirement: z.enum(['required', 'optional', 'none']).optional(),
-          layout_source: z
-            .enum(['ai_selected', 'worker_adjusted', 'ai_repaired_after_image_failure'])
-            .optional(),
-          image_status: z.enum(['not_needed', 'generated', 'provider_failed_repaired']).optional(),
-          typography_scale: z
-            .enum(['editorial_bold', 'balanced_classic', 'information_dense'])
-            .optional(),
-          contentDirection: z.enum(['column', 'row']).optional(),
-          nested_groups: z.object({
-            top_meta: z.array(SduiComponentSchema).optional(),
-            core_content: z.array(SduiComponentSchema).optional(),
-            action_footer: z.array(SduiComponentSchema).optional(),
-          }),
-        });
         const ReviseSchema = z.object({
           prompt: z.string().min(1).max(2000),
           aspectRatio: z.enum(['1:1', '4:5', '9:16']).default('4:5'),
@@ -1102,13 +947,6 @@ export const contentRoutes =
             message: `Revision failed: ${reviseResult.error.kind}`,
           });
         }
-        const brandKitResult = await deps.brandKitService.get(params.id);
-        if (!brandKitResult.ok) mapResultError(brandKitResult.error);
-        if (!brandKitResult.value)
-          throw appError({
-            code: 'VALIDATION',
-            messages: ['Brand Kit wajib dikonfigurasi terlebih dahulu'],
-          });
         const previousWorkflow =
           typeof (request.body as { workflow?: unknown }).workflow === 'object' &&
           (request.body as { workflow?: unknown }).workflow !== null
@@ -1117,7 +955,7 @@ export const contentRoutes =
         const workflow = buildCarouselWorkflowArtifact({
           prompt: parsed.data.prompt,
           slides: reviseResult.value.slides,
-          brandKit: brandKitResult.value,
+          brandKit: GROWHALEY_BRAND_KIT,
           source: 'planning',
           previous: previousWorkflow,
           stage: 'prompts',
@@ -1127,6 +965,82 @@ export const contentRoutes =
           slides: reviseResult.value.slides,
           aspectRatio: parsed.data.aspectRatio,
         });
+      },
+    );
+
+    // POST /carousel/draft/preview — render already-planned slides to PNG for
+    // the visual draft grid. NO image generation, NO AI call, NO DB job row:
+    // it's a pure render (~200-300ms/slide) used to preview/iterate layout &
+    // composition before committing to a final job.
+    //
+    // Returns base64 data URIs (not object-storage URLs): preview PNGs are
+    // ephemeral (single-tenant, ~5 slides ≈ ~1MB) so uploading them would only
+    // litter storage and add a round-trip.
+    fastify.post(
+      '/carousel/draft/preview',
+      {
+        preHandler: [
+          fastify.requireAuth,
+          fastify.requireTeamId,
+          fastify.requireRole('content.generate'),
+        ],
+      },
+      async (request, reply) => {
+        const PreviewSchema = z.object({
+          aspectRatio: z.enum(['1:1', '4:5', '9:16']).default('4:5'),
+          slides: z.array(SduiSlideSchema).min(1).max(10),
+          typographyOverride: TypographyOverrideSchema.optional(),
+        });
+        const parsed = PreviewSchema.safeParse(request.body);
+        if (!parsed.success) {
+          throw appError({
+            code: 'VALIDATION',
+            messages: parsed.error.errors.map((e) => e.message),
+          });
+        }
+        const renderer = deps.renderer;
+        if (!renderer) throw appError({ code: 'INTERNAL', message: 'Renderer not configured' });
+
+        type Slide = import('@leads-generator/shared').SduiSlide;
+        const typography = parsed.data.typographyOverride;
+        const inputSlides = parsed.data.slides as unknown as Slide[];
+
+        // Guardrail each slide for RENDER only, and flag whether the text had to
+        // be adjusted to fit the (possibly newly-chosen) layout — the UI shows a
+        // "text adjusted" hint so the user can ask AI to rewrite for that layout.
+        const guarded = inputSlides.map((slide) => {
+          const next = applySduiTextGuardrails(slide, { typography });
+          const adjusted = JSON.stringify(next) !== JSON.stringify(slide);
+          return { slide: next, adjusted };
+        });
+
+        // Placeholder photos keep photo/collage layouts intact in preview (an
+        // empty image slot would downgrade them to a poster template).
+        const renderSlides = guarded.map((g) => ({
+          slide: withPreviewPlaceholders(g.slide),
+          adjusted: g.adjusted,
+        }));
+        const doc = buildGrowhaleyDocument(
+          parsed.data.aspectRatio,
+          renderSlides.map((r) => r.slide),
+        );
+
+        const items = await Promise.all(
+          renderSlides.map(async ({ slide, adjusted }) => {
+            const { png, metrics } = await renderer.renderSlideWithMetrics(slide, doc, []);
+            return {
+              slide_number: slide.slide_number,
+              png: `data:image/png;base64,${png.toString('base64')}`,
+              adjusted,
+              metrics: {
+                contentUsageRatio: metrics.contentUsageRatio,
+                overflow: metrics.overflow,
+              },
+            };
+          }),
+        );
+
+        return reply.status(200).send({ aspectRatio: parsed.data.aspectRatio, items });
       },
     );
 

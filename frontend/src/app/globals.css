@@ -2,7 +2,66 @@
 @config "../../tailwind.config.ts";
 
 @layer base {
+  :root {
+    color-scheme: light;
+  }
+
   body {
-    @apply bg-bg-white-0 text-text-strong-950 font-inter;
+    @apply bg-bg-subtle text-text-strong-950 font-sans antialiased;
+  }
+
+  * {
+    @apply border-stroke-soft-200;
+  }
+
+  ::selection {
+    @apply bg-alpha-primary-10 text-text-strong-950;
+  }
+}
+
+@layer components {
+  /* VOIT-DS Layout Grid & Margins */
+  .voit-container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 16px; /* Mobile */
+    padding-right: 16px;
+  }
+  @media (min-width: 1024px) {
+    .voit-container {
+      padding-left: 64px; /* Tablet Portrait */
+      padding-right: 64px;
+    }
+  }
+  @media (min-width: 1280px) {
+    .voit-container {
+      padding-left: 80px; /* Laptop */
+      padding-right: 80px;
+    }
+  }
+  @media (min-width: 1366px) {
+    .voit-container {
+      padding-left: 85px; /* Tablet Landscape */
+      padding-right: 85px;
+    }
+  }
+  @media (min-width: 1440px) {
+    .voit-container {
+      padding-left: 104px; /* Desktop */
+      padding-right: 104px;
+    }
+  }
+  @media (min-width: 1512px) {
+    .voit-container {
+      padding-left: 140px; /* Large Desktop */
+      padding-right: 140px;
+    }
+  }
+  @media (min-width: 1728px) {
+    .voit-container {
+      padding-left: 248px; /* Ultra Wide */
+      padding-right: 248px;
+    }
   }
 }

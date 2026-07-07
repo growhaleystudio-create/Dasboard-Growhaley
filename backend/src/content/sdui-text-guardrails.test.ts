@@ -78,7 +78,7 @@ describe('applySduiTextGuardrails', () => {
   });
 
   it('trims header, body, tag, and invalid highlight by selected split-image layout limits', () => {
-    const layout = 'split_text_left_image_right';
+    const layout = 'gw_photo_statement';
     const limits = getLayoutCatalogItem(layout)!.textLimits;
     const slide = baseSlide(layout, [
       {
@@ -111,7 +111,7 @@ describe('applySduiTextGuardrails', () => {
   });
 
   it('limits checklist item count and item length for step layouts', () => {
-    const layout = 'numbered_steps';
+    const layout = 'gw_poster_list';
     const limits = getLayoutCatalogItem(layout)!.textLimits;
     const slide = baseSlide(layout, [
       { type: 'header', text: 'Process steps' },
@@ -134,7 +134,7 @@ describe('applySduiTextGuardrails', () => {
   });
 
   it('uses CTA label limits from CTA-capable layouts', () => {
-    const layout = 'header_body_cta';
+    const layout = 'gw_poster_cta';
     const limits = getLayoutCatalogItem(layout)!.textLimits;
     const slide = baseSlide(layout, [
       { type: 'header', text: 'Take action now' },
@@ -198,7 +198,7 @@ describe('applySduiTextGuardrails', () => {
 
   it('removes empty checklist components and reports headline-only content slides', () => {
     const slide: SduiSlide = {
-      ...baseSlide('checklist_stack', [
+      ...baseSlide('gw_poster_list', [
         { type: 'header', text: 'Keunggulan AI untuk UMKM' },
         { type: 'checklist', items: [] },
       ]),
@@ -219,14 +219,14 @@ describe('applySduiTextGuardrails', () => {
       guarded.nested_groups.core_content?.some((component) => component.type === 'checklist'),
     ).toBe(false);
     expect(
-      issues.some((issue) => issue.includes('checklist_stack') && issue.includes('checklist')),
+      issues.some((issue) => issue.includes('gw_poster_list') && issue.includes('checklist')),
     ).toBe(true);
     expect(issues).toContain('slide 1: content slide cannot be headline-only');
   });
 
   it('removes empty body components and reports header-only text slides', () => {
     const slide: SduiSlide = {
-      ...baseSlide('text_stack', [
+      ...baseSlide('gw_poster_statement', [
         { type: 'header', text: 'Benefit AI untuk Promosi' },
         { type: 'body', text: '   ' },
       ]),
@@ -246,7 +246,7 @@ describe('applySduiTextGuardrails', () => {
     expect(guarded.nested_groups.core_content?.some((component) => component.type === 'body')).toBe(
       false,
     );
-    expect(issues.some((issue) => issue.includes('text_stack') && issue.includes('body'))).toBe(
+    expect(issues.some((issue) => issue.includes('gw_poster_statement') && issue.includes('body'))).toBe(
       true,
     );
     expect(issues).toContain('slide 1: content slide cannot be headline-only');

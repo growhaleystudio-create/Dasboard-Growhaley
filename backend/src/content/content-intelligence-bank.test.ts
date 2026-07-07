@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildContentIntelligenceContext, contentIntelligenceBankStats } from './content-intelligence-bank.js';
+import { LAYOUT_VARIANT_IDS } from '@leads-generator/shared';
 
 type IntelligenceContext = {
   narrativeArcs: Array<{ id: string }>;
   imageStyles: Array<{ id: string; promptFragment: string; avoid: string[] }>;
-  layoutRecipes: Array<{ id: string }>;
+  layoutRecipes: Array<{ id: string; layoutCandidates: string[] }>;
 };
 
 function parseContext(prompt: string, slideCount = 5): IntelligenceContext {
@@ -92,7 +93,7 @@ describe('content intelligence bank', () => {
     );
 
     expect(parsed.layoutRecipes.map((recipe) => recipe.id)).toEqual(
-      expect.arrayContaining(['dual_image_comparison', 'product_angle_pair', 'mini_gallery_3up', 'variant_selector_showcase']),
+      expect.arrayContaining(['gw_collage_showcase']),
     );
   });
 
@@ -104,12 +105,71 @@ describe('content intelligence bank', () => {
 
     expect(parsed.layoutRecipes.map((recipe) => recipe.id)).toEqual(
       expect.arrayContaining([
-        'editorial_feature_spread',
-        'magazine_cover_story',
-        'pullquote_editorial',
-        'profile_story_layout',
-        'data_editorial',
+        'gw_photo_statement',
+        'gw_poster_quote',
+        'gw_poster_statement',
+        'gw_poster_stat',
       ]),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression tests for the three bug fixes (2026-06-18).
+// See content-intelligence-bank.ts for the rationale on each guard.
+// ---------------------------------------------------------------------------
+
+describe('content intelligence bank — bug-fix guards', () => {
+  // Bug #2: scoreByTriggers must use word boundaries, not raw substring.
+  // Before the fix, the trigger "ai" (inside futuristic_tech) matched
+  // inside everyday Indonesian words like "main" and "baik", so a totally
+  // unrelated prompt could be silently tagged with a futuristic/AI style.
+  it('does not substring-match short triggers inside other words (word-boundary fix)', () => {
+    // "main" and "baik" both contain the letters "ai" but neither is about AI.
+    const parsed = parseContext(
+      'tips main game yang baik untuk anak-anak, fokus pada keseruan',
+    );
+
+    const styleIds = parsed.imageStyles.map((style) => style.id);
+    expect(styleIds).not.toContain('futuristic_tech');
+  });
+
+  it('still matches a word trigger when it appears as a standalone token', () => {
+    const parsed = parseContext('jelaskan dampak AI dan automation di masa depan');
+    const styleIds = parsed.imageStyles.map((style) => style.id);
+    expect(styleIds).toContain('futuristic_tech');
+  });
+
+  // Bug #1: fallback used positional indexes [1]!, [2]!, [3]! which would
+  // throw at runtime if the leading LAYOUT_RECIPES entries were ever removed.
+  // The fallback must gracefully degrade when nothing matches.
+  it('returns a safe fallback (never crashes) for a prompt with no trigger matches', () => {
+    // Pure punctuation / gibberish that no trigger should match.
+    const parsed = parseContext('......', 3);
+
+    expect(parsed.layoutRecipes.length).toBeGreaterThan(0);
+    expect(parsed.narrativeArcs.length).toBeGreaterThan(0);
+  });
+
+  // Bug #3: layoutCandidates in every preset must stay in sync with the
+  // shared layout catalog. If a layout is renamed/removed upstream, a preset
+  // that still references the old id would emit an invalid layout_variant_id
+  // and the slide would silently fall back to a generic layout.
+  it('every layoutCandidate id in the bank exists in the shared layout catalog', () => {
+    const validIds = new Set(LAYOUT_VARIANT_IDS);
+
+    // Force retrieval of recipes with their candidates by using a prompt
+    // broad enough to hit many recipes; also assert the static fallback path.
+    const matched = parseContext(
+      'panduan lengkap masalah penyebab solusi langkah tips perbandingan before after testimonial',
+      10,
+    );
+    const fallback = parseContext('......', 3);
+
+    for (const recipe of [...matched.layoutRecipes, ...fallback.layoutRecipes]) {
+      for (const candidateId of recipe.layoutCandidates) {
+        expect(validIds, `recipe "${recipe.id}" references unknown layout "${candidateId}"`).toContain(candidateId);
+      }
+    }
   });
 });

@@ -11,7 +11,12 @@
  */
 
 import { Queue } from 'bullmq';
-import { CONTENT_FAILURE_ERROR_CODE, ok, err } from '@leads-generator/shared';
+import {
+  CONTENT_FAILURE_ERROR_CODE,
+  CONTENT_JOB_REAPER_DEADLINE_MS,
+  ok,
+  err,
+} from '@leads-generator/shared';
 import type {
   Result,
   AspectRatio,
@@ -41,10 +46,11 @@ export const CONTENT_GENERATION_QUEUE_NAME = 'content-generation';
 
 /**
  * A job still `pending` after this long is treated as orphaned and reaped on
- * the next status read. Set above the worker's own job timeout (180s) so a
- * live run can record its own terminal status before the lazy reaper fires.
+ * the next status read. Must stay above the worker's `lockDuration`
+ * (CONTENT_JOB_MAX_RUNTIME_MS) so a live run always gets the chance to record
+ * its own terminal status before the lazy reaper fires.
  */
-const STUCK_JOB_DEADLINE_MS = 240_000;
+const STUCK_JOB_DEADLINE_MS = CONTENT_JOB_REAPER_DEADLINE_MS;
 
 // ---------------------------------------------------------------------------
 // Public request / response types
@@ -224,8 +230,13 @@ export class ContentGeneratorService {
       if (!this.deps.allowQueueFallback || !this.deps.fallbackProcessor) {
         throw queueError;
       }
-      void this.deps.fallbackProcessor(payload).catch((error) => {
+      void this.deps.fallbackProcessor(payload).catch(async (error) => {
         console.error('[content-generator] fallback processor failed:', error);
+        // Without a terminal status the job would sit `pending` until the lazy
+        // reaper; record the failure right away so polling clients see it.
+        await this.deps.jobRepo
+          .setStatus(teamId, job.id, 'failed', 'provider_error')
+          .catch(() => {});
       });
     }
 
@@ -269,6 +280,9 @@ export class ContentGeneratorService {
     const workflow = typeof job.inputs.workflow === 'object' && job.inputs.workflow !== null
       ? (job.inputs.workflow as CarouselWorkflowArtifact)
       : undefined;
+    const qualityWarnings = Array.isArray(job.inputs.plannerQualityWarnings)
+      ? (job.inputs.plannerQualityWarnings as string[])
+      : undefined;
 
     const view: JobView = {
       jobId: job.id,
@@ -277,6 +291,7 @@ export class ContentGeneratorService {
       ...(job.reason != null ? { errorCode: contentErrorCode(job.reason) } : {}),
       ...(layoutAudit ? { layoutAudit } : {}),
       ...(workflow ? { workflow } : {}),
+      ...(qualityWarnings && qualityWarnings.length > 0 ? { qualityWarnings } : {}),
       slides: slides.map((s) => {
         const slide: JobView['slides'][number] = {
           index: s.index,

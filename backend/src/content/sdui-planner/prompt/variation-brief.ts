@@ -47,7 +47,7 @@ export function buildVariationBrief(input: SduiPlannerInput): string {
   const layoutBiases = [
     // Visual-heavy approaches (image/editorial)
     'prioritize visual storytelling: use image-hero, image-balanced, rich-magazine, and editorial layouts for impact',
-    'prioritize editorial depth: rich-editorial, rich-thirds, article-style layouts with pullquote and caption rhythm',
+    'prioritize poster depth: bold statement slides, {01}-numbered lists, and a strong quote beat',
     'prioritize image-first flow: multi-product-story, image-fullbleed, mockup-hero for visual dominance',
     
     // Data/stat-driven approaches

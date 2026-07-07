@@ -22,3 +22,4 @@ export {
   type CredentialValidator,
 } from './activation.js';
 export { ExampleGoogleSearchConnector } from './example-google-search.js';
+export { GoogleMapsHeadlessConnector } from './google-maps-headless.js';

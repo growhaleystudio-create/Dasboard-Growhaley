@@ -5,15 +5,13 @@
  * - Requirements 2.1 (valid save → upsert + audit)
  * - Requirements 2.3 (invalid input rejected with named violations, existing
  *   template unchanged)
- * - Requirements 2.4 (no Brand_Kit → rejected)
  * - Multiple error collection (all violations reported at once)
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
-import type { BrandKit, MasterTemplate } from '@leads-generator/shared';
+import type { MasterTemplate } from '@leads-generator/shared';
 import type { AuditLog } from '../../src/privacy/audit-log.js';
-import type { BrandKitRepository } from '../../src/repository/brand-kit-repository.js';
 import type { MasterTemplateRepository } from '../../src/repository/master-template-repository.js';
 import { MasterTemplateService } from '../../src/content/master-template-service.js';
 
@@ -23,20 +21,8 @@ import { MasterTemplateService } from '../../src/content/master-template-service
 
 const TEAM_ID = 'team-abc';
 const ACTOR_ID = 'user-xyz';
-const BRAND_KIT_ID = 'bk-001';
-
-const FAKE_BRAND_KIT: BrandKit = {
-  id: BRAND_KIT_ID,
-  teamId: TEAM_ID,
-  logoUrl: 'https://cdn.example.com/team-abc/logo.png',
-  fonts: [{ id: 'font-1', url: 'https://cdn.example.com/team-abc/font.ttf', family: 'Inter' }],
-  colors: ['#FF5733'],
-  chrome: { logoPlacement: 'top-left', pageNumberFormat: '{current}/{total}', siteUrl: 'https://example.com' },
-  updatedAt: new Date('2024-01-01'),
-};
 
 const VALID_INPUT = {
-  brandKitId: BRAND_KIT_ID,
   allowedBlocks: ['heading', 'body', 'cta'] as const,
   maxSlides: 5,
   textLimits: [
@@ -60,19 +46,7 @@ const SAVED_TEMPLATE: MasterTemplate = {
 // Helpers: create mock dependencies
 // ---------------------------------------------------------------------------
 
-function makeMocks(overrides?: { existingBrandKit?: BrandKit | null; existingTemplate?: MasterTemplate | null }) {
-  const resolvedBrandKit =
-    overrides !== undefined && 'existingBrandKit' in overrides
-      ? overrides.existingBrandKit
-      : FAKE_BRAND_KIT;
-
-  const brandKitRepo: BrandKitRepository = {
-    findByTeam: vi.fn().mockResolvedValue(resolvedBrandKit),
-    insert: vi.fn(),
-    insertFont: vi.fn(),
-    deleteFonts: vi.fn(),
-  } as unknown as BrandKitRepository;
-
+function makeMocks(overrides?: { existingTemplate?: MasterTemplate | null }) {
   const templateRepo: MasterTemplateRepository = {
     findByTeam: vi.fn().mockResolvedValue(overrides?.existingTemplate ?? null),
     upsert: vi.fn().mockResolvedValue(SAVED_TEMPLATE),
@@ -83,12 +57,12 @@ function makeMocks(overrides?: { existingBrandKit?: BrandKit | null; existingTem
     recordTx: vi.fn().mockResolvedValue(undefined),
   };
 
-  return { brandKitRepo, templateRepo, audit };
+  return { templateRepo, audit };
 }
 
 function makeService(overrides?: Parameters<typeof makeMocks>[0]) {
   const mocks = makeMocks(overrides);
-  const service = new MasterTemplateService(mocks.templateRepo, mocks.brandKitRepo, mocks.audit);
+  const service = new MasterTemplateService(mocks.templateRepo, mocks.audit);
   return { service, ...mocks };
 }
 
@@ -117,7 +91,6 @@ describe('MasterTemplateService.save — valid input', () => {
     expect(templateRepo.upsert).toHaveBeenCalledOnce();
     const [calledTeamId, calledData] = (templateRepo.upsert as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(calledTeamId).toBe(TEAM_ID);
-    expect(calledData.brandKitId).toBe(BRAND_KIT_ID);
     expect(calledData.maxSlides).toBe(5);
     expect(calledData.allowedBlocks).toEqual(['heading', 'body', 'cta']);
   });
@@ -134,27 +107,6 @@ describe('MasterTemplateService.save — valid input', () => {
     expect(entry.action).toBe('content_manage');
     expect(entry.objectType).toBe('master_template');
     expect(entry.metadata?.op).toBe('save');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests: missing Brand_Kit (R2.4)
-// ---------------------------------------------------------------------------
-
-describe('MasterTemplateService.save — missing Brand_Kit (R2.4)', () => {
-  it('returns VALIDATION error when team has no Brand_Kit', async () => {
-    const { service, templateRepo, audit } = makeService({ existingBrandKit: null });
-
-    const result = await service.save(TEAM_ID, ACTOR_ID, VALID_INPUT);
-
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('expected err');
-    expect(result.error.code).toBe('VALIDATION');
-    expect(result.error.messages.some((m) => m.includes('Brand_Kit'))).toBe(true);
-
-    // Must NOT mutate existing template
-    expect(templateRepo.upsert).not.toHaveBeenCalled();
-    expect(audit.record).not.toHaveBeenCalled();
   });
 });
 
@@ -229,10 +181,9 @@ describe('MasterTemplateService.save — maxSlides out of range', () => {
 
 describe('MasterTemplateService.save — multiple errors collected at once (R2.3)', () => {
   it('reports all violated rules simultaneously', async () => {
-    const { service, templateRepo, audit } = makeService({ existingBrandKit: null });
+    const { service, templateRepo, audit } = makeService();
 
     const badInput = {
-      brandKitId: '',
       allowedBlocks: ['NOT_A_BLOCK'] as never,
       maxSlides: 0,
       textLimits: [{ blockType: 'heading' as const, maxChars: -5 }],
@@ -247,8 +198,6 @@ describe('MasterTemplateService.save — multiple errors collected at once (R2.3
     expect(result.error.code).toBe('VALIDATION');
 
     const msgs = result.error.messages;
-    // Should report Brand_Kit missing
-    expect(msgs.some((m) => m.includes('Brand_Kit'))).toBe(true);
     // Should report unknown block type with the actual block name
     expect(msgs.some((m) => m.includes('NOT_A_BLOCK'))).toBe(true);
     // Should report maxSlides violation
@@ -357,7 +306,6 @@ describe('MasterTemplateService.rules', () => {
     expect(rules.textLimits).toBeInstanceOf(Map);
     expect(rules.aspectRatios).toBeInstanceOf(Set);
     expect(rules.maxSlides).toBe(5);
-    expect(rules.brandKitId).toBe(BRAND_KIT_ID);
     expect(rules.allowedBlocks.has('heading')).toBe(true);
     expect(rules.textLimits.get('heading')).toBe(80);
     expect(rules.aspectRatios.has('1:1')).toBe(true);

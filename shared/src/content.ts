@@ -59,6 +59,25 @@ export type FailureReason =
   | 'layout_unsatisfiable';
 
 // ---------------------------------------------------------------------------
+// Generation job timing contract
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum wall-clock time a single carousel generation job may run in the
+ * worker. Mirrors the BullMQ `lockDuration` so a job is never reaped while
+ * the worker still legitimately owns it.
+ */
+export const CONTENT_JOB_MAX_RUNTIME_MS = 600_000;
+
+/**
+ * Age (from job creation) after which a still-`pending` job is considered
+ * orphaned and lazily marked `failed`/`timeout` by the status endpoint.
+ * Must exceed {@link CONTENT_JOB_MAX_RUNTIME_MS}; the extra buffer absorbs
+ * queue wait time (worker concurrency is limited).
+ */
+export const CONTENT_JOB_REAPER_DEADLINE_MS = CONTENT_JOB_MAX_RUNTIME_MS + 120_000;
+
+// ---------------------------------------------------------------------------
 // Brand Kit types
 // ---------------------------------------------------------------------------
 
@@ -219,7 +238,6 @@ export interface TextLengthLimit {
 export interface MasterTemplate {
   id: string;
   teamId: string;
-  brandKitId: string;
   /** Block types permitted in slides. */
   allowedBlocks: BlockType[];
   /** Maximum number of slides per carousel. */
@@ -244,7 +262,6 @@ export interface MasterTemplateRules {
   readonly textLimits: ReadonlyMap<BlockType, number>;
   readonly aspectRatios: ReadonlySet<AspectRatio>;
   readonly defaultTone: string;
-  readonly brandKitId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,6 +359,11 @@ export interface JobView {
   errorCode?: AppErrorCode;
   /** Final per-slide layout/image audit captured by the worker. */
   layoutAudit?: SduiSlideAudit[];
+  /**
+   * Non-terminal planner warnings surfaced to the user (e.g. text that was
+   * auto-adjusted by guardrails, unresolved quality issues after repair).
+   */
+  qualityWarnings?: string[];
   /** Hermes-style workflow artifact used to draft, render, review, and revise this carousel. */
   workflow?: CarouselWorkflowArtifact;
   slides: {
@@ -381,105 +403,23 @@ export type TypographyScale = 'editorial_bold' | 'balanced_classic' | 'informati
  * allowing deck composition to vary.
  */
 export type LegacyLayoutVariantId =
-  // === EXISTING 15 ===
-  | 'cover_centered'
-  | 'cover_editorial_left'
-  | 'cover_image_full'
-  | 'text_centered'
-  | 'text_stack'
-  | 'split_text_left_image_right'
-  | 'split_image_left_text_right'
-  | 'image_top_text_bottom'
-  | 'text_top_image_bottom'
-  | 'checklist_stack'
-  | 'numbered_steps'
-  | 'quote_focus'
-  | 'stat_highlight'
-  | 'big_statement'
-  | 'cta_centered'
-  // === NEW 15 (mixed components) ===
-  | 'split_checklist_image' // checklist kiri + gambar kanan
-  | 'split_image_checklist' // gambar kiri + checklist kanan
-  | 'split_stat_image' // angka besar kiri + gambar kanan
-  | 'image_top_checklist_bottom' // gambar atas + checklist bawah
-  | 'quote_with_image' // quote center + gambar kecil bawah
-  | 'header_body_cta' // judul + body + tombol CTA (column)
-  | 'split_header_body_cta' // teks (judul+body+cta) kiri + gambar kanan
-  | 'cover_checklist' // cover style + checklist poin dibawah judul
-  | 'numbered_with_image' // judul + steps bernomor + gambar samping
-  | 'big_stat_with_body' // angka raksasa + body + tombol kecil
-  | 'two_column_text' // dua kolom teks sejajar (heading kiri, bullets kanan)
-  | 'image_full_caption' // gambar hampir full + caption kecil di bawah
-  | 'quote_stat_combo' // kutipan + angka statistik di bawah
-  | 'cover_with_cta' // cover style + tombol CTA
-  | 'checklist_with_body' // judul + body intro + checklist
-  // === DYNAMIC RICH LAYOUTS ===
-  | 'feature_cards_grid' // N cards (icon+judul+desc) dalam grid 2-3 kolom
-  | 'feature_cards_with_header' // judul besar + grid kartu di bawah
-  | 'comparison_columns' // dua kolom perbandingan (DULU vs SEKARANG, dll)
-  | 'comparison_with_header' // judul + dua kolom perbandingan
-  // === MULTI-IMAGE LAYOUTS ===
-  | 'dual_image_comparison'
-  | 'product_angle_pair'
-  | 'use_case_gallery_2up'
-  | 'mini_gallery_3up'
-  | 'moodboard_grid'
-  | 'step_visual_sequence'
-  | 'problem_solution_visual_pair'
-  | 'feature_visual_cards'
-  | 'testimonial_with_portrait_and_product'
-  | 'case_study_snapshot_grid'
-  | 'dos_donts_visual_pair'
-  | 'outfit_or_style_board'
-  | 'menu_or_food_combo'
-  | 'real_estate_room_pair'
-  | 'app_screen_flow'
-  | 'social_proof_wall'
-  | 'event_moment_grid'
-  | 'travel_itinerary_grid'
-  | 'collection_showcase'
-  | 'variant_selector_showcase'
-  // === EDITORIAL LAYOUTS ===
-  | 'editorial_feature_spread'
-  | 'magazine_cover_story'
-  | 'pullquote_editorial'
-  | 'article_column_layout'
-  | 'editorial_image_caption_grid'
-  | 'profile_story_layout'
-  | 'reportage_photo_essay'
-  | 'opinion_big_statement'
-  | 'timeline_editorial'
-  | 'data_editorial'
-  // === FLEXIBLE RICH STACK LAYOUTS (render any rich components in order) ===
-  | 'editorial_rich_stack'
-  | 'editorial_rich_split';
+  // === GROWHALEY POSTER FAMILY (100% grafis) ===
+  | 'gw_poster_cover' // display type raksasa staggered + kicker + wordmark
+  | 'gw_poster_statement' // statement besar + body pendek
+  | 'gw_poster_list' // display header + checklist/numbered bold rows
+  | 'gw_poster_stat' // angka raksasa + label, aksen {01}
+  | 'gw_poster_quote' // kutipan besar dengan ornamen kurung kurawal
+  | 'gw_poster_cta' // display text + tombol CTA blok lime
+  | 'gw_poster_cards' // comparison / feature cards gaya poster
+  // === GROWHALEY PHOTO FAMILY (foto full-bleed) ===
+  | 'gw_photo_rotated' // foto full-bleed + teks lime rotasi 90° di tepi
+  | 'gw_photo_statement' // foto full-bleed + scrim + display text bawah
+  // === GROWHALEY COLLAGE FAMILY (multi-image) ===
+  | 'gw_collage_showcase'; // bg blue + teks lime raksasa + kartu foto overlap
 
-export type LayoutFamily =
-  | 'cover'
-  | 'text'
-  | 'checklist'
-  | 'quote'
-  | 'stat'
-  | 'cta'
-  | 'image_split'
-  | 'image_stack'
-  | 'image_focus'
-  | 'cards'
-  | 'comparison'
-  | 'multi_image'
-  | 'editorial';
+export type LayoutFamily = 'poster' | 'photo' | 'collage';
 
-export type LayoutStylePreference =
-  | 'auto'
-  | 'scrapbook'
-  | 'editorial'
-  | 'bento'
-  | 'timeline'
-  | 'comparison'
-  | 'ui_mockup'
-  | 'chart'
-  | 'seamless'
-  | 'alternating_contrast';
+export type LayoutStylePreference = 'auto' | 'poster' | 'photo' | 'collage';
 
 export type ImagePreferenceMode = 'auto' | 'all_slides_image';
 
@@ -506,6 +446,15 @@ export interface SduiLayoutTextLimits {
   ctaLabel?: number;
   checklistItem?: number;
   checklistItems?: number;
+  /**
+   * Density floor (min characters / min list items). Text below these reads
+   * as an underfilled canvas; the planner's quality check reports it so the
+   * repair pass enriches the copy instead of leaving dead space.
+   */
+  headerMin?: number;
+  bodyMin?: number;
+  quoteMin?: number;
+  checklistItemsMin?: number;
 }
 
 /** Per-generation typography size override from the generator config panel. */
@@ -784,6 +733,85 @@ export interface SduiNestedGroups {
   action_footer?: SduiComponent[];
 }
 
+// ---------------------------------------------------------------------------
+// Growhaley composition parameters — AI-selectable variation WITHIN the
+// design system. Every value is an enum from the brand guideline; the
+// renderer sanitizes combinations so output can never go off-brand.
+// ---------------------------------------------------------------------------
+
+/** Poster canvas color (Warna Palet, brand guideline p.32). */
+export type GwPaletteChoice = 'lime' | 'cream' | 'blue' | 'ink';
+/** Ornament/highlight accent color. */
+export type GwAccentChoice = 'magenta' | 'blue' | 'lime' | 'cream';
+/** Headline composition style. */
+export type GwHeaderComposition = 'staggered' | 'left' | 'center' | 'right';
+/** Radial gradient blob anchor ('none' = flat color). */
+export type GwBlobPosition =
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right'
+  | 'center'
+  | 'none';
+/** Density of {01}/{ } brace ornaments. */
+export type GwOrnamentLevel = 'none' | 'minimal' | 'rich';
+/** Collage card scatter pattern. */
+export type GwCollageScatter = 'cascade' | 'zigzag' | 'stack';
+
+export const GW_PALETTE_CHOICES: readonly GwPaletteChoice[] = ['lime', 'cream', 'blue', 'ink'];
+export const GW_ACCENT_CHOICES: readonly GwAccentChoice[] = ['magenta', 'blue', 'lime', 'cream'];
+export const GW_HEADER_COMPOSITIONS: readonly GwHeaderComposition[] = [
+  'staggered',
+  'left',
+  'center',
+  'right',
+];
+export const GW_BLOB_POSITIONS: readonly GwBlobPosition[] = [
+  'top-left',
+  'top-right',
+  'bottom-left',
+  'bottom-right',
+  'center',
+  'none',
+];
+export const GW_ORNAMENT_LEVELS: readonly GwOrnamentLevel[] = ['none', 'minimal', 'rich'];
+export const GW_COLLAGE_SCATTERS: readonly GwCollageScatter[] = ['cascade', 'zigzag', 'stack'];
+
+/** Brand hex per palette/accent choice (guideline p.32). Single source for
+ *  the renderer AND the frontend composition swatches. */
+export const GW_PALETTE_HEX: Record<GwPaletteChoice, string> = {
+  lime: '#e8ff03',
+  cream: '#fff7e8',
+  blue: '#177db5',
+  ink: '#232326',
+};
+export const GW_ACCENT_HEX: Record<GwAccentChoice, string> = {
+  magenta: '#da457f',
+  blue: '#177db5',
+  lime: '#e8ff03',
+  cream: '#fff7e8',
+};
+
+/** Accent choices that keep contrast on each palette background. The AI
+ *  planner and the frontend swatch picker both validate against this table;
+ *  an accent not listed for a palette is rejected/disabled. */
+export const GW_ACCENT_ALLOWED: Record<GwPaletteChoice, readonly GwAccentChoice[]> = {
+  lime: ['magenta', 'blue'],
+  cream: ['blue', 'magenta'],
+  blue: ['cream', 'lime', 'magenta'],
+  ink: ['magenta', 'lime', 'cream'],
+};
+
+/** Per-slide visual composition chosen by the AI planner (all optional). */
+export interface GwComposition {
+  palette?: GwPaletteChoice;
+  accent?: GwAccentChoice;
+  headerComposition?: GwHeaderComposition;
+  blob?: GwBlobPosition;
+  ornaments?: GwOrnamentLevel;
+  scatter?: GwCollageScatter;
+}
+
 /** A single slide in the SDUI document. */
 export interface SduiSlide {
   slide_number: number;
@@ -802,685 +830,113 @@ export interface SduiSlide {
   typography_scale?: TypographyScale;
   /** Main content flow direction decided by AI: 'column' (default) or 'row' (side-by-side). */
   contentDirection?: 'column' | 'row';
+  /** AI-selected Growhaley composition parameters (design-system locked). */
+  composition?: GwComposition;
   nested_groups: SduiNestedGroups;
 }
 
 export const LAYOUT_CATALOG: readonly LayoutCatalogItem[] = [
   {
-    id: 'cover_centered',
-    family: 'cover',
+    id: 'gw_poster_cover',
+    family: 'poster',
     requiredComponents: ['header'],
     supportsImage: false,
-    bestFor: 'Opening slide with a clear title and subtitle.',
-    visualRole: 'No image; typography carries the hook.',
-    fallbackFamilies: ['text', 'checklist', 'cta'],
-    textLimits: { tag: 16, header: 52, body: 110 },
+    bestFor: 'Opening slide: giant staggered display headline in brand color.',
+    visualRole: 'No image; massive condensed typography carries the hook.',
+    fallbackFamilies: ['poster'],
+    textLimits: { tag: 24, header: 48, body: 120 },
   },
   {
-    id: 'cover_editorial_left',
-    family: 'cover',
-    requiredComponents: ['header'],
-    supportsImage: false,
-    bestFor: 'Editorial opening slide with a strong left-aligned headline.',
-    visualRole: 'No image; composition and negative space carry the hook.',
-    fallbackFamilies: ['text', 'checklist', 'cta'],
-    textLimits: { tag: 16, header: 54, body: 110 },
-  },
-  {
-    id: 'cover_image_full',
-    family: 'image_focus',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Dramatic opening when a concrete hero image is essential.',
-    visualRole: 'Hero background image drives the first impression.',
-    fallbackFamilies: ['cover', 'text'],
-    textLimits: { tag: 16, header: 44, body: 100 },
-  },
-  {
-    id: 'text_centered',
-    family: 'text',
+    id: 'gw_poster_statement',
+    family: 'poster',
     requiredComponents: ['header', 'body'],
     supportsImage: false,
-    bestFor: 'Balanced short explanation or educational point.',
-    visualRole: 'No image; centered text clarity.',
-    fallbackFamilies: ['checklist', 'quote', 'cta'],
-    textLimits: { tag: 16, header: 44, body: 170 },
+    bestFor: 'Bold statement or explanation with a short supporting paragraph.',
+    visualRole: 'No image; display statement + compact body.',
+    fallbackFamilies: ['poster'],
+    textLimits: { tag: 24, header: 70, body: 160 },
   },
   {
-    id: 'text_stack',
-    family: 'text',
-    requiredComponents: ['header', 'body'],
-    supportsImage: false,
-    bestFor: 'Readable explanatory slide with title and paragraph.',
-    visualRole: 'No image; structured copy carries the message.',
-    fallbackFamilies: ['checklist', 'quote', 'stat'],
-    textLimits: { tag: 16, header: 44, body: 180 },
-  },
-  {
-    id: 'split_text_left_image_right',
-    family: 'image_split',
-    requiredComponents: ['header', 'body', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Concrete example, product, proof, or scene alongside explanation.',
-    visualRole: 'Image supports the text in a side-by-side editorial split.',
-    fallbackFamilies: ['text', 'checklist'],
-    textLimits: { tag: 16, header: 34, body: 120 },
-  },
-  {
-    id: 'split_image_left_text_right',
-    family: 'image_split',
-    requiredComponents: ['header', 'body', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Concrete visual lead with explanatory copy.',
-    visualRole: 'Image leads the story, text explains.',
-    fallbackFamilies: ['text', 'checklist'],
-    textLimits: { tag: 16, header: 34, body: 120 },
-  },
-  {
-    id: 'image_top_text_bottom',
-    family: 'image_stack',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Visual example above a concise explanation.',
-    visualRole: 'Image is the first-read element.',
-    fallbackFamilies: ['text', 'checklist'],
-    textLimits: { tag: 16, header: 38, body: 120 },
-  },
-  {
-    id: 'text_top_image_bottom',
-    family: 'image_stack',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Short claim followed by concrete visual proof.',
-    visualRole: 'Image reinforces the text after reading.',
-    fallbackFamilies: ['text', 'stat'],
-    textLimits: { tag: 16, header: 38, body: 120 },
-  },
-  {
-    id: 'checklist_stack',
-    family: 'checklist',
+    id: 'gw_poster_list',
+    family: 'poster',
     requiredComponents: ['header', 'checklist'],
     supportsImage: false,
-    bestFor: 'Benefits, reasons, symptoms, steps, or warning signs.',
-    visualRole: 'No image; list structure improves scanning.',
-    fallbackFamilies: ['text', 'stat'],
-    textLimits: { tag: 16, header: 38, body: 90, checklistItem: 55, checklistItems: 5 },
+    bestFor: 'Steps, tips, or checklist content as bold poster rows.',
+    visualRole: 'No image; numbered/checklist rows in display type.',
+    fallbackFamilies: ['poster'],
+    textLimits: { tag: 24, header: 45, body: 100, checklistItem: 45, checklistItems: 6 },
   },
   {
-    id: 'numbered_steps',
-    family: 'checklist',
-    requiredComponents: ['header', 'checklist'],
+    id: 'gw_poster_stat',
+    family: 'poster',
+    requiredComponents: ['stat_block'],
     supportsImage: false,
-    bestFor: 'Sequential guidance or process.',
-    visualRole: 'No image; sequence is the visual structure.',
-    fallbackFamilies: ['text', 'cta'],
-    textLimits: { tag: 16, header: 38, body: 90, checklistItem: 52, checklistItems: 5 },
+    bestFor: 'One hero metric or a row of KPIs with short context.',
+    visualRole: 'No image; giant number with {01}-style accents.',
+    fallbackFamilies: ['poster'],
+    textLimits: { tag: 24, header: 40, body: 120 },
   },
   {
-    id: 'quote_focus',
-    family: 'quote',
+    id: 'gw_poster_quote',
+    family: 'poster',
     requiredComponents: ['quote'],
     supportsImage: false,
-    bestFor: 'Testimonial, myth, principle, or memorable statement.',
-    visualRole: 'No image; quote treatment is the visual anchor.',
-    fallbackFamilies: ['text', 'stat'],
-    textLimits: { tag: 16, quote: 130, body: 90 },
+    bestFor: 'Key insight, testimonial, or pull quote.',
+    visualRole: 'No image; big quote framed by curly-brace ornaments.',
+    fallbackFamilies: ['poster'],
+    textLimits: { tag: 24, quote: 120, body: 60 },
   },
   {
-    id: 'stat_highlight',
-    family: 'stat',
-    requiredComponents: ['header', 'body'],
-    supportsImage: false,
-    bestFor: 'Data point, percentage, score, or key number.',
-    visualRole: 'No image; the number becomes the visual.',
-    fallbackFamilies: ['text', 'quote'],
-    textLimits: { tag: 16, header: 18, body: 82 },
-  },
-  {
-    id: 'big_statement',
-    family: 'text',
-    requiredComponents: ['header'],
-    supportsImage: false,
-    bestFor: 'One strong insight or transition statement.',
-    visualRole: 'No image; oversized statement creates emphasis.',
-    fallbackFamilies: ['quote', 'cta'],
-    textLimits: { tag: 16, header: 52, body: 80 },
-  },
-  {
-    id: 'cta_centered',
-    family: 'cta',
+    id: 'gw_poster_cta',
+    family: 'poster',
     requiredComponents: ['header', 'button_cta'],
     supportsImage: false,
-    bestFor: 'Closing action, resource, or next step.',
-    visualRole: 'No image; CTA button anchors the slide.',
-    fallbackFamilies: ['text', 'cover'],
-    textLimits: { tag: 16, header: 40, body: 80, ctaLabel: 24 },
+    bestFor: 'Closing slide with a clear call to action.',
+    visualRole: 'No image; display text + lime CTA block.',
+    fallbackFamilies: ['poster'],
+    textLimits: { tag: 24, header: 45, body: 110, ctaLabel: 28 },
   },
   {
-    id: 'split_checklist_image',
-    family: 'image_split',
-    requiredComponents: ['checklist', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Checklist paired with visual proof or example.',
-    visualRole: 'Image supports a scannable checklist.',
-    fallbackFamilies: ['checklist', 'text'],
-    textLimits: { tag: 16, header: 32, checklistItem: 38, checklistItems: 4 },
-  },
-  {
-    id: 'split_image_checklist',
-    family: 'image_split',
-    requiredComponents: ['checklist', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Visual-led checklist or comparison.',
-    visualRole: 'Image leads, checklist interprets.',
-    fallbackFamilies: ['checklist', 'text'],
-    textLimits: { tag: 16, header: 32, checklistItem: 38, checklistItems: 4 },
-  },
-  {
-    id: 'split_stat_image',
-    family: 'image_split',
-    requiredComponents: ['header', 'body', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Statistic with concrete visual context.',
-    visualRole: 'Image contextualizes the metric.',
-    fallbackFamilies: ['stat', 'text'],
-    textLimits: { tag: 16, header: 16, body: 72 },
-  },
-  {
-    id: 'image_top_checklist_bottom',
-    family: 'image_stack',
-    requiredComponents: ['checklist', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Visual example followed by actions or signs.',
-    visualRole: 'Image introduces the list.',
-    fallbackFamilies: ['checklist', 'text'],
-    textLimits: { tag: 16, header: 34, checklistItem: 42, checklistItems: 4 },
-  },
-  {
-    id: 'quote_with_image',
-    family: 'image_focus',
-    requiredComponents: ['quote', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Human/testimonial quote with portrait or scene.',
-    visualRole: 'Image adds human context to quote.',
-    fallbackFamilies: ['quote', 'text'],
-    textLimits: { tag: 16, quote: 86, body: 60 },
-  },
-  {
-    id: 'header_body_cta',
-    family: 'cta',
-    requiredComponents: ['header', 'body', 'button_cta'],
-    supportsImage: false,
-    bestFor: 'Actionable explanation with a button.',
-    visualRole: 'No image; CTA action anchors message.',
-    fallbackFamilies: ['text', 'cover'],
-    textLimits: { tag: 16, header: 38, body: 130, ctaLabel: 24 },
-  },
-  {
-    id: 'split_header_body_cta',
-    family: 'image_split',
-    requiredComponents: ['header', 'body', 'button_cta', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Conversion slide with product/proof image.',
-    visualRole: 'Image supports the action prompt.',
-    fallbackFamilies: ['cta', 'text'],
-    textLimits: { tag: 16, header: 32, body: 76, ctaLabel: 22 },
-  },
-  {
-    id: 'cover_checklist',
-    family: 'checklist',
-    requiredComponents: ['header', 'checklist'],
-    supportsImage: false,
-    bestFor: 'Cover with immediate key points.',
-    visualRole: 'No image; checklist creates visual rhythm.',
-    fallbackFamilies: ['cover', 'text'],
-    textLimits: { tag: 16, header: 44, body: 70, checklistItem: 38, checklistItems: 3 },
-  },
-  {
-    id: 'numbered_with_image',
-    family: 'image_split',
-    requiredComponents: ['header', 'checklist', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'How-to sequence with visual example.',
-    visualRole: 'Image demonstrates the steps.',
-    fallbackFamilies: ['checklist', 'text'],
-    textLimits: { tag: 16, header: 32, checklistItem: 36, checklistItems: 4 },
-  },
-  {
-    id: 'big_stat_with_body',
-    family: 'stat',
-    requiredComponents: ['header', 'body'],
-    supportsImage: false,
-    bestFor: 'Large metric plus explanation.',
-    visualRole: 'No image; number is the hero.',
-    fallbackFamilies: ['text', 'quote'],
-    textLimits: { tag: 16, header: 16, body: 82, ctaLabel: 22 },
-  },
-  {
-    id: 'two_column_text',
-    family: 'checklist',
-    requiredComponents: ['header', 'checklist'],
-    supportsImage: false,
-    bestFor: 'Comparison, dos/donts, or grouped notes.',
-    visualRole: 'No image; two-column text adds variety.',
-    fallbackFamilies: ['text', 'stat'],
-    textLimits: { tag: 16, header: 34, checklistItem: 38, checklistItems: 4 },
-  },
-  {
-    id: 'image_full_caption',
-    family: 'image_focus',
-    requiredComponents: ['image_placeholder', 'body'],
-    supportsImage: true,
-    bestFor: 'Visual-first storytelling with caption.',
-    visualRole: 'Image is the main content.',
-    fallbackFamilies: ['text', 'quote'],
-    textLimits: { tag: 16, header: 32, body: 96 },
-  },
-  {
-    id: 'quote_stat_combo',
-    family: 'quote',
-    requiredComponents: ['quote'],
-    supportsImage: false,
-    bestFor: 'Quote supported by stat/body copy.',
-    visualRole: 'No image; quote/stat combo adds contrast.',
-    fallbackFamilies: ['stat', 'text'],
-    textLimits: { tag: 16, quote: 88, body: 24 },
-  },
-  {
-    id: 'cover_with_cta',
-    family: 'cta',
-    requiredComponents: ['header', 'button_cta'],
-    supportsImage: false,
-    bestFor: 'Opening or closing slide with direct action.',
-    visualRole: 'No image; title and CTA are focal.',
-    fallbackFamilies: ['cover', 'text'],
-    textLimits: { tag: 16, header: 44, body: 76, ctaLabel: 24 },
-  },
-  {
-    id: 'checklist_with_body',
-    family: 'checklist',
-    requiredComponents: ['header', 'body', 'checklist'],
-    supportsImage: false,
-    bestFor: 'Explanation followed by scannable points.',
-    visualRole: 'No image; body plus checklist balances depth and scanning.',
-    fallbackFamilies: ['text', 'stat'],
-    textLimits: { tag: 16, header: 36, body: 120, checklistItem: 50, checklistItems: 4 },
-  },
-  // Dynamic rich layouts
-  {
-    id: 'feature_cards_grid',
-    family: 'cards',
+    id: 'gw_poster_cards',
+    family: 'poster',
     requiredComponents: ['feature_cards'],
     supportsImage: false,
-    bestFor:
-      'Showcase multiple features, benefits, or use cases as visual cards with icons. Best for 3–6 items.',
-    visualRole: 'No image; card grid drives visual hierarchy.',
-    fallbackFamilies: ['checklist', 'text'],
-    textLimits: { tag: 16, header: 44, body: 80 },
+    bestFor: 'Feature cards or a two-column comparison in poster style.',
+    visualRole: 'No image; bordered cards / comparison columns on brand color.',
+    fallbackFamilies: ['poster'],
+    textLimits: { tag: 24, header: 40, body: 80 },
   },
   {
-    id: 'feature_cards_with_header',
-    family: 'cards',
-    requiredComponents: ['header', 'feature_cards'],
-    supportsImage: false,
-    bestFor:
-      'Strong headline followed by feature cards. Best for "what we offer" or "why choose this" slides.',
-    visualRole: 'No image; header + card grid.',
-    fallbackFamilies: ['checklist', 'text'],
-    textLimits: { tag: 16, header: 48, body: 70 },
-  },
-  {
-    id: 'comparison_columns',
-    family: 'comparison',
-    requiredComponents: ['comparison'],
-    supportsImage: false,
-    bestFor:
-      'Side-by-side comparison: DULU vs SEKARANG, Pros vs Cons, With vs Without. Ideal for 2–4 items per column.',
-    visualRole: 'No image; two-column contrast layout.',
-    fallbackFamilies: ['checklist', 'text'],
-    textLimits: { tag: 16, header: 44, body: 60 },
-  },
-  {
-    id: 'comparison_with_header',
-    family: 'comparison',
-    requiredComponents: ['header', 'comparison'],
-    supportsImage: false,
-    bestFor:
-      'Headline framing a two-column comparison. Good for transformation stories or before/after scenarios.',
-    visualRole: 'No image; header sets context for comparison.',
-    fallbackFamilies: ['checklist', 'text'],
-    textLimits: { tag: 16, header: 48, body: 60 },
-  },
-  // Multi-image layouts. These require 2+ image_placeholder components in core_content.
-  {
-    id: 'dual_image_comparison',
-    family: 'multi_image',
+    id: 'gw_photo_rotated',
+    family: 'photo',
     requiredComponents: ['header', 'image_placeholder'],
     supportsImage: true,
-    bestFor: 'Before/after, old/new, problem/solution, or two visual alternatives side by side.',
-    visualRole: 'Two equal image panels create direct comparison.',
-    fallbackFamilies: ['comparison', 'image_split'],
-    textLimits: { tag: 16, header: 38, body: 60 },
+    bestFor: 'Photo-led slide with dramatic rotated typography on the edges.',
+    visualRole: 'Full-bleed photo; lime display text rotated 90° along the rails.',
+    fallbackFamilies: ['photo', 'poster'],
+    textLimits: { tag: 24, header: 36, body: 130 },
   },
   {
-    id: 'product_angle_pair',
-    family: 'multi_image',
+    id: 'gw_photo_statement',
+    family: 'photo',
     requiredComponents: ['header', 'image_placeholder'],
     supportsImage: true,
-    bestFor:
-      'Product front/detail, packaging/inside, full shot/close-up, or two important product angles.',
-    visualRole: 'Two product images show scale and detail in one glance.',
-    fallbackFamilies: ['image_split', 'image_focus'],
-    textLimits: { tag: 16, header: 38, body: 60 },
+    bestFor: 'Photo-led statement, cover with hero image, or visual CTA.',
+    visualRole: 'Full-bleed photo with gradient scrim and bottom display text.',
+    fallbackFamilies: ['photo', 'poster'],
+    textLimits: { tag: 24, header: 55, body: 140, ctaLabel: 28 },
   },
   {
-    id: 'use_case_gallery_2up',
-    family: 'multi_image',
+    id: 'gw_collage_showcase',
+    family: 'collage',
     requiredComponents: ['header', 'image_placeholder'],
     supportsImage: true,
-    bestFor: 'Two usage scenarios, audience segments, rooms, or situations.',
-    visualRole: 'Two image cards compare use cases.',
-    fallbackFamilies: ['cards', 'image_split'],
-    textLimits: { tag: 16, header: 38, body: 60 },
+    bestFor: 'Portfolio/showcase with 2-4 overlapping project cards.',
+    visualRole: 'Blue canvas, giant lime display text, overlapping photo cards with captions.',
+    fallbackFamilies: ['photo', 'poster'],
+    textLimits: { tag: 24, header: 30, body: 100 },
   },
-  {
-    id: 'mini_gallery_3up',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Three quick examples, variations, ideas, or visual options.',
-    visualRole: 'Three compact images create a mini gallery.',
-    fallbackFamilies: ['cards', 'image_stack'],
-    textLimits: { tag: 16, header: 36, body: 54 },
-  },
-  {
-    id: 'moodboard_grid',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor:
-      'Brand mood, campaign direction, interiors, fashion, beauty, or creative visual direction.',
-    visualRole: 'Four-image grid conveys an aesthetic direction.',
-    fallbackFamilies: ['image_focus', 'cards'],
-    textLimits: { tag: 16, header: 34, body: 52 },
-  },
-  {
-    id: 'step_visual_sequence',
-    family: 'multi_image',
-    requiredComponents: ['header', 'checklist', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Visual process, tutorial, recipe, onboarding, or sequence of actions.',
-    visualRole: 'Three images aligned with steps show progression.',
-    fallbackFamilies: ['checklist', 'image_split'],
-    textLimits: { tag: 16, header: 34, checklistItem: 34, checklistItems: 3 },
-  },
-  {
-    id: 'problem_solution_visual_pair',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'A visible problem contrasted with the improved solution.',
-    visualRole: 'Two labeled visuals make transformation concrete.',
-    fallbackFamilies: ['comparison', 'image_split'],
-    textLimits: { tag: 16, header: 38, body: 60 },
-  },
-  {
-    id: 'feature_visual_cards',
-    family: 'multi_image',
-    requiredComponents: ['feature_cards', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Feature cards where each feature needs a small supporting visual.',
-    visualRole: 'Image-backed feature tiles increase scannability.',
-    fallbackFamilies: ['cards', 'image_split'],
-    textLimits: { tag: 16, header: 38, body: 54 },
-  },
-  {
-    id: 'testimonial_with_portrait_and_product',
-    family: 'multi_image',
-    requiredComponents: ['quote', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Social proof that benefits from both customer/person and product/result imagery.',
-    visualRole: 'Portrait plus product/result builds trust.',
-    fallbackFamilies: ['quote', 'image_focus'],
-    textLimits: { tag: 16, quote: 74, body: 50 },
-  },
-  {
-    id: 'case_study_snapshot_grid',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Portfolio, campaign recap, before/process/after, or case study proof.',
-    visualRole: 'Three snapshots summarize the case.',
-    fallbackFamilies: ['cards', 'image_focus'],
-    textLimits: { tag: 16, header: 36, body: 54 },
-  },
-  {
-    id: 'dos_donts_visual_pair',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Correct vs incorrect behavior, design, habit, or setup.',
-    visualRole: 'Two labeled visuals clarify do and do not.',
-    fallbackFamilies: ['comparison', 'checklist'],
-    textLimits: { tag: 16, header: 38, body: 60 },
-  },
-  {
-    id: 'outfit_or_style_board',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Fashion, beauty, styling, accessories, and look boards.',
-    visualRole: 'Main look plus detail tiles creates a style board.',
-    fallbackFamilies: ['image_focus', 'cards'],
-    textLimits: { tag: 16, header: 34, body: 52 },
-  },
-  {
-    id: 'menu_or_food_combo',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Food menus, combo meals, hero dish plus drink/side/detail.',
-    visualRole: 'Food image grid shows variety and texture.',
-    fallbackFamilies: ['image_focus', 'cards'],
-    textLimits: { tag: 16, header: 34, body: 52 },
-  },
-  {
-    id: 'real_estate_room_pair',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Property exterior/interior, living room/bedroom, before/after staging.',
-    visualRole: 'Two room/property images help buyers compare spaces.',
-    fallbackFamilies: ['image_split', 'image_focus'],
-    textLimits: { tag: 16, header: 36, body: 54 },
-  },
-  {
-    id: 'app_screen_flow',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor:
-      'SaaS/app flows with two or three screens, onboarding, dashboard workflow, or feature demo.',
-    visualRole: 'Screen sequence communicates product flow.',
-    fallbackFamilies: ['image_split', 'cards'],
-    textLimits: { tag: 16, header: 36, body: 54 },
-  },
-  {
-    id: 'social_proof_wall',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Review screenshots, UGC, customer results, chats, or proof collage.',
-    visualRole: 'Multiple proof tiles build credibility.',
-    fallbackFamilies: ['quote', 'cards'],
-    textLimits: { tag: 16, header: 36, body: 54 },
-  },
-  {
-    id: 'event_moment_grid',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Event recap with stage, audience, speaker, booth, or activation moments.',
-    visualRole: 'Grid of event moments shows energy and scale.',
-    fallbackFamilies: ['image_focus', 'cards'],
-    textLimits: { tag: 16, header: 34, body: 52 },
-  },
-  {
-    id: 'travel_itinerary_grid',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Travel itinerary, destination highlights, food, hotel, activity mix.',
-    visualRole: 'Image grid previews itinerary variety.',
-    fallbackFamilies: ['image_focus', 'cards'],
-    textLimits: { tag: 16, header: 34, body: 52 },
-  },
-  {
-    id: 'collection_showcase',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Catalog collections, bundles, product families, or multiple SKUs.',
-    visualRole: 'Multiple product tiles show breadth of collection.',
-    fallbackFamilies: ['cards', 'image_focus'],
-    textLimits: { tag: 16, header: 34, body: 52 },
-  },
-  {
-    id: 'variant_selector_showcase',
-    family: 'multi_image',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Colorways, variants, sizes, materials, plans, or choices shown side by side.',
-    visualRole: 'Variant tiles make options immediately visible.',
-    fallbackFamilies: ['cards', 'comparison'],
-    textLimits: { tag: 16, header: 34, body: 52 },
-  },
-  // Editorial layouts
-  {
-    id: 'editorial_feature_spread',
-    family: 'editorial',
-    requiredComponents: ['header', 'body', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Magazine-like feature story with strong headline, short dek, and art-directed image.',
-    visualRole: 'Large editorial image plus headline/dek creates publication feel.',
-    fallbackFamilies: ['image_split', 'cover'],
-    textLimits: { tag: 16, header: 42, body: 200 },
-  },
-  {
-    id: 'magazine_cover_story',
-    family: 'editorial',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Editorial cover, campaign lead, profile issue, or premium story opener.',
-    visualRole: 'Full-bleed cover image with bold type overlay.',
-    fallbackFamilies: ['image_focus', 'cover'],
-    textLimits: { tag: 16, header: 44, body: 160 },
-  },
-  {
-    id: 'pullquote_editorial',
-    family: 'editorial',
-    requiredComponents: ['quote', 'body'],
-    supportsImage: false,
-    bestFor: 'A key quote, principle, or insight that deserves a publication-style pause.',
-    visualRole: 'Oversized quote and small supporting copy drive rhythm.',
-    fallbackFamilies: ['quote', 'text'],
-    textLimits: { tag: 16, quote: 150, body: 180 },
-  },
-  {
-    id: 'article_column_layout',
-    family: 'editorial',
-    requiredComponents: ['header', 'body'],
-    supportsImage: false,
-    bestFor:
-      'Narrative explanation, thought leadership, essays, or educational mini-article slides.',
-    visualRole: 'Two-column text layout creates article density.',
-    fallbackFamilies: ['text', 'checklist'],
-    textLimits: { tag: 16, header: 42, body: 230 },
-  },
-  {
-    id: 'editorial_image_caption_grid',
-    family: 'editorial',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Image-led editorial slide with caption/callout feel.',
-    visualRole: 'One or two image tiles with caption-like body copy.',
-    fallbackFamilies: ['image_focus', 'multi_image'],
-    textLimits: { tag: 16, header: 36, body: 120 },
-  },
-  {
-    id: 'profile_story_layout',
-    family: 'editorial',
-    requiredComponents: ['header', 'body', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Founder story, expert profile, customer story, or personal brand narrative.',
-    visualRole: 'Portrait-led editorial layout adds human context.',
-    fallbackFamilies: ['image_split', 'quote'],
-    textLimits: { tag: 16, header: 36, body: 200 },
-  },
-  {
-    id: 'reportage_photo_essay',
-    family: 'editorial',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor: 'Reportage, documentary, event recap, field story, or observed reality.',
-    visualRole: 'Photo essay grid with short narration.',
-    fallbackFamilies: ['multi_image', 'image_focus'],
-    textLimits: { tag: 16, header: 34, body: 110 },
-  },
-  {
-    id: 'opinion_big_statement',
-    family: 'editorial',
-    requiredComponents: ['header', 'body'],
-    supportsImage: false,
-    bestFor: 'Opinion, contrarian take, thesis slide, or provocative editorial transition.',
-    visualRole: 'Large statement with editorial kicker and short rationale.',
-    fallbackFamilies: ['text', 'quote'],
-    textLimits: { tag: 16, header: 56, body: 200 },
-  },
-  {
-    id: 'timeline_editorial',
-    family: 'editorial',
-    requiredComponents: ['header', 'checklist'],
-    supportsImage: false,
-    bestFor: 'Chronology, phases, milestones, or story arc over time.',
-    visualRole: 'Editorial timeline creates narrative progression.',
-    fallbackFamilies: ['checklist', 'text'],
-    textLimits: { tag: 16, header: 36, checklistItem: 80, checklistItems: 4 },
-  },
-  {
-    id: 'data_editorial',
-    family: 'editorial',
-    requiredComponents: ['header', 'body'],
-    supportsImage: false,
-    bestFor: 'Data journalism, key metric, report insight, or analytical editorial point.',
-    visualRole: 'Big number plus interpretive copy feels like data journalism.',
-    fallbackFamilies: ['stat', 'text'],
-    textLimits: { tag: 16, header: 18, body: 200 },
-  },
-  // Flexible rich-stack layouts: render header + any rich components (stat_block, key_value_list, data_table, stat_row, timeline, numbered_list, progress_bar, callout, pull_quote, byline, caption, divider, body) vertically, in order.
-  {
-    id: 'editorial_rich_stack',
-    family: 'editorial',
-    requiredComponents: ['header'],
-    supportsImage: false,
-    bestFor:
-      'Dense editorial slide combining a headline with rich content blocks (stats, key-value specs, tables, timeline, progress bars, callouts, numbered lists). Use when a slide needs structured data or multiple content blocks together.',
-    visualRole: 'No image; stacked rich blocks create an information-dense editorial page.',
-    fallbackFamilies: ['text', 'stat', 'checklist'],
-    textLimits: { tag: 16, header: 48, body: 240 },
-  },
-  {
-    id: 'editorial_rich_split',
-    family: 'editorial',
-    requiredComponents: ['header', 'image_placeholder'],
-    supportsImage: true,
-    bestFor:
-      'Editorial slide with an image on one side and rich content blocks (stats, specs, callouts, timeline) on the other.',
-    visualRole: 'Image plus stacked rich blocks balance visual and data.',
-    fallbackFamilies: ['image_split', 'editorial'],
-    textLimits: { tag: 16, header: 42, body: 200 },
-  },
-] as const;
+];
 
 export const LAYOUT_VARIANT_IDS: readonly LegacyLayoutVariantId[] = LAYOUT_CATALOG.map(
   (item) => item.id,

@@ -26,6 +26,19 @@ export function errorHandler(
     });
   }
 
+  // Handle native Fastify errors that carry their own HTTP status (e.g.
+  // FST_ERR_CTP_EMPTY_JSON_BODY, FST_ERR_CTP_BODY_TOO_LARGE). Without this
+  // branch these fall through to the 500 fallback below, masking real 4xx
+  // client errors as generic "unexpected error" responses.
+  if (typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500) {
+    return reply.status(error.statusCode).send({
+      code: 'FASTIFY_HTTP_ERROR',
+      errorCode: `API_HTTP_${error.statusCode}`,
+      error: error.name || 'Bad Request',
+      message: error.message || 'Request could not be processed',
+    });
+  }
+
   // If the error has a "code" that matches our AppError structure
   if (error && typeof error === 'object' && 'code' in error && isAppErrorCategory((error as { code?: unknown }).code)) {
     const appError = error as unknown as AppError;

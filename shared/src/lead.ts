@@ -48,6 +48,14 @@ export const LEAD_STATUSES: readonly LeadStatus[] = [
  */
 export type AIState = 'none' | 'pending' | 'success' | 'unavailable';
 
+export type WhatsAppVerificationStatus = 'unchecked' | 'registered' | 'not_registered';
+
+export const WHATSAPP_VERIFICATION_STATUSES: readonly WhatsAppVerificationStatus[] = [
+  'unchecked',
+  'registered',
+  'not_registered',
+] as const;
+
 /**
  * Reason an AI enrichment ended up `unavailable`.
  *
@@ -74,6 +82,31 @@ export type AIUnavailableReason =
  * `isDuplicate` together with `duplicateOf` implements the deduplication
  * canonicalization (R6.1).
  */
+export interface LeadAuditAttributes {
+  rating?: number;
+  reviewCount?: number;
+  category?: string;
+  openingHours?: string[];
+  placeId?: string;
+  websiteStatus?: 'has_website' | 'no_website' | 'inactive' | 'parked' | 'unknown';
+}
+
+export interface LeadScoreBreakdown {
+  teamId: string;
+  leadId: string;
+  scoringVersion: string;
+  hasWebsite: boolean;
+  businessValueScore: number;
+  websiteNeedScore: number;
+  reachabilityScore: number;
+  confidenceScore: number;
+  confidenceModifier: number;
+  baseScore: number;
+  finalScore: number;
+  auditSource?: 'custom-parser';
+  computedAt: Date;
+}
+
 export interface Lead {
   id: string;
   teamId: string;
@@ -83,6 +116,9 @@ export interface Lead {
   publicContact?: string;
   profileUrl?: string;
   location?: string;
+  whatsappUrl?: string;
+  whatsappNumber?: string;
+  whatsappVerificationStatus: WhatsAppVerificationStatus;
 
   matchedKeywords: string[];
   status: LeadStatus;
@@ -90,6 +126,8 @@ export interface Lead {
   /** 0..100 integer when scored; `null` when unscored (R7.2, R7.8). */
   score: number | null;
   scoreState: 'scored' | 'unscored';
+  auditAttributes?: LeadAuditAttributes;
+  scoringBreakdown?: LeadScoreBreakdown;
 
   isDuplicate: boolean;
   duplicateOf?: string;
@@ -119,6 +157,9 @@ export interface NormalizedLead {
   profileUrl?: string;
   publicContact?: string;
   location?: string;
+  whatsappUrl?: string;
+  whatsappNumber?: string;
+  whatsappVerificationStatus: WhatsAppVerificationStatus;
   sources: string[];
   matchedKeywords: string[];
   discoveredAt: Date;
@@ -135,6 +176,9 @@ export interface RawProspect {
   profileUrl?: string;
   publicContact?: string;
   location?: string;
+  whatsappUrl?: string;
+  whatsappNumber?: string;
+  whatsappVerificationStatus?: WhatsAppVerificationStatus;
   matchedKeyword: string;
   acquiredAt: Date;
   /** Optional public post excerpt usable as AI snippet (R13.7). */
@@ -155,13 +199,33 @@ export interface PublicLeadSnapshot {
   location?: string;
   matchedKeywords: string[];
   postSnippet?: string;
+  /** Public business signals (Google Maps rating/reviews/category) fed to the AI explainer. */
+  businessProfile?: {
+    rating?: number;
+    reviewCount?: number;
+    category?: string;
+  };
   websiteAudit?: PublicWebsiteAudit;
+  scoringBreakdown?: Pick<
+    LeadScoreBreakdown,
+    | 'businessValueScore'
+    | 'websiteNeedScore'
+    | 'reachabilityScore'
+    | 'confidenceScore'
+    | 'confidenceModifier'
+    | 'baseScore'
+    | 'finalScore'
+    | 'hasWebsite'
+    | 'scoringVersion'
+  >;
 }
 
 export interface PublicWebsiteAudit {
   status: 'not_applicable_no_website' | 'ok' | 'http_error' | 'fetch_failed' | 'timeout';
   url: string;
   finalUrl?: string;
+  whatsappUrl?: string;
+  whatsappNumber?: string;
   httpStatus?: number;
   loadTimeSeconds?: number;
   httpsEnabled?: boolean;

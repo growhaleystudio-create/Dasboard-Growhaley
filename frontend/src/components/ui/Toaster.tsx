@@ -9,7 +9,7 @@ export function Toaster() {
       toastOptions={{
         classNames: {
           toast:
-            "group toast group-[.toaster]:bg-bg-white-0 group-[.toaster]:text-text-strong-950 group-[.toaster]:border-stroke-soft-200 group-[.toaster]:shadow-lg font-inter rounded-panel",
+            "group toast rounded-panel font-sans group-[.toaster]:border-stroke-soft-200 group-[.toaster]:bg-bg-white-0 group-[.toaster]:text-text-strong-950 group-[.toaster]:shadow-lg",
           description: "group-[.toast]:text-text-soft-400",
           actionButton:
             "group-[.toast]:bg-primary-base group-[.toast]:text-white",

@@ -3,7 +3,7 @@ import z from 'zod';
 import type { LeadManager } from '../../lead/lead-manager.js';
 import type { LeadFilter } from '../../lead-query/lead-filter.js';
 import type { LeadQueryService } from '../../lead-query/lead-query-service.js';
-import type { AIState, AppError, LeadStatus } from '@leads-generator/shared';
+import type { AIState, AppError, LeadStatus, WhatsAppVerificationStatus } from '@leads-generator/shared';
 
 export interface LeadRoutesDeps {
   manager: LeadManager;
@@ -12,11 +12,13 @@ export interface LeadRoutesDeps {
 
 const LeadStatusSchema = z.enum(['New', 'Reviewed', 'Contacted', 'Qualified', 'Converted', 'Rejected']);
 const AiStatusSchema = z.enum(['none', 'pending', 'success', 'unavailable']);
+const WhatsAppVerificationStatusSchema = z.enum(['unchecked', 'registered', 'not_registered']);
 
 const QuerySchema = z.object({
   search: z.string().optional(),
   status: z.union([LeadStatusSchema, z.array(LeadStatusSchema)]).optional().transform(v => typeof v === 'string' ? [v] : v),
   aiStatus: z.union([AiStatusSchema, z.array(AiStatusSchema)]).optional().transform(v => typeof v === 'string' ? [v] : v),
+  whatsappVerification: z.union([WhatsAppVerificationStatusSchema, z.array(WhatsAppVerificationStatusSchema)]).optional().transform(v => typeof v === 'string' ? [v] : v),
   sourceId: z.union([z.string(), z.array(z.string())]).optional().transform(v => typeof v === 'string' ? [v] : v),
   rating: z.union([z.coerce.number().int().min(1).max(5), z.array(z.coerce.number().int().min(1).max(5))]).optional().transform(v => Array.isArray(v) ? v : v === undefined ? undefined : [v]),
   website: z.union([z.enum(['have_website', 'no_website']), z.array(z.enum(['have_website', 'no_website']))]).optional().transform(v => typeof v === 'string' ? [v] : v),
@@ -34,6 +36,10 @@ const ChangeStatusSchema = z.object({
 
 const AddNoteSchema = z.object({
   body: z.string().min(1).max(2000),
+});
+
+const ChangeWhatsAppVerificationSchema = z.object({
+  status: z.enum(['unchecked', 'registered', 'not_registered']),
 });
 
 const DeleteSchema = z.object({
@@ -64,8 +70,10 @@ export const leadRoutes = (deps: LeadRoutesDeps): FastifyPluginAsync => async (f
     if (filter.search !== undefined) leadFilter.search = filter.search;
     const statuses = filter.status as LeadStatus[] | undefined;
     const aiStates = filter.aiStatus as AIState[] | undefined;
+    const whatsappVerificationStatuses = filter.whatsappVerification as WhatsAppVerificationStatus[] | undefined;
     if (statuses !== undefined) leadFilter.statuses = statuses;
     if (aiStates !== undefined) leadFilter.aiStates = aiStates;
+    if (whatsappVerificationStatuses !== undefined) leadFilter.whatsappVerificationStatuses = whatsappVerificationStatuses;
     if (filter.sourceId !== undefined) leadFilter.sources = filter.sourceId;
     if (filter.rating !== undefined) leadFilter.ratings = filter.rating;
     if (filter.website !== undefined) leadFilter.websiteStatuses = filter.website;
@@ -92,6 +100,22 @@ export const leadRoutes = (deps: LeadRoutesDeps): FastifyPluginAsync => async (f
     const result = await deps.manager.changeStatus(request.session!, params.leadId, parseResult.data.status);
     if (!result.ok) throw toThrowable(result.error);
     
+    return reply.status(200).send(result.value);
+  });
+
+
+  fastify.put('/:leadId/whatsapp-verification', {
+    preHandler: [fastify.requireAuth, fastify.requireTeamId, fastify.requireRole('lead.whatsapp_verification.change')]
+  }, async (request, reply) => {
+    const params = request.params as { id: string, leadId: string };
+    const parseResult = ChangeWhatsAppVerificationSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      throw toThrowable({ code: 'VALIDATION', messages: parseResult.error.errors.map(e => e.message) });
+    }
+
+    const result = await deps.manager.changeWhatsappVerificationStatus(request.session!, params.leadId, parseResult.data.status);
+    if (!result.ok) throw toThrowable(result.error);
+
     return reply.status(200).send(result.value);
   });
 

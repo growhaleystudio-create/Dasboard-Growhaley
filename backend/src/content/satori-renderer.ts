@@ -21,7 +21,12 @@ import type { BrandFontRef } from './rendering/satori/fonts.js';
 import { el } from './rendering/satori/primitives.js';
 import { pickTemplate, has } from './rendering/satori/template-picker.js';
 import { renderTemplate } from './rendering/satori/templates/index.js';
-import { fitContentTokens, makeTokens } from './rendering/satori/tokens.js';
+import { growhaleyChromeColors, gwSafeArea, isLightChrome } from './rendering/satori/templates/growhaley.js';
+import { fitContentTokens, makeTokens, scaleTypographyTokens } from './rendering/satori/tokens.js';
+import type { Tokens } from './rendering/satori/tokens.js';
+import { measureSvgContent } from './rendering/satori/svg-measure.js';
+import type { SvgContentMetrics } from './rendering/satori/svg-measure.js';
+import { GROWHALEY_LOGO_BLUE, GROWHALEY_LOGO_WHITE } from './growhaley-brand.js';
 
 // ---------------------------------------------------------------------------
 // Shared helpers moved to rendering/satori/*
@@ -54,32 +59,128 @@ import { fitContentTokens, makeTokens } from './rendering/satori/tokens.js';
 
 export type { BrandFontRef } from './rendering/satori/fonts.js';
 
+/** Post-render quality metrics for one slide (see svg-measure.ts). */
+export interface SlideRenderMetrics extends SvgContentMetrics {
+  /** 1 = estimator tokens were fine; 2 = a measured correction pass ran. */
+  passes: 1 | 2;
+  /** Token scale applied on the second pass (1 when passes === 1). */
+  appliedScale: number;
+}
+
+/** Below this share of the content zone the canvas reads as underfilled. */
+const UNDERFILL_RATIO = 0.55;
+/** Grow cap for the measured second pass — brand type may not balloon. */
+const MAX_GROW_SCALE = 1.25;
+/** Shrink applied when the measured pass finds a real overflow. */
+const OVERFLOW_SHRINK = 0.9;
+
 export class SatoriRenderer {
   async renderSlide(
     slide: SduiSlide,
     doc: SduiDocument,
     brandFonts: BrandFontRef[],
   ): Promise<Buffer> {
+    const { png } = await this.renderSlideWithMetrics(slide, doc, brandFonts);
+    return png;
+  }
+
+  /**
+   * Two-pass render: pass 1 uses the estimator-fitted tokens, then the
+   * REAL SVG bounding boxes are measured. Severe underfill or overflow
+   * triggers exactly one corrective re-render with rescaled tokens.
+   */
+  async renderSlideWithMetrics(
+    slide: SduiSlide,
+    doc: SduiDocument,
+    brandFonts: BrandFontRef[],
+  ): Promise<{ png: Buffer; metrics: SlideRenderMetrics }> {
     const dims = canvasSize(doc.aspectRatio);
     const { fonts, availableFamilies } = await loadFonts(brandFonts);
     if (fonts.length === 0) throw new Error('no_fonts_available');
 
-    const chromeTk = makeTokens(doc, dims, availableFamilies);
+    const baseTk = makeTokens(doc, dims, availableFamilies);
     const templateId = pickTemplate(slide, doc.aspectRatio);
-    const tk = fitContentTokens(slide, templateId, chromeTk);
+    const tk = fitContentTokens(slide, templateId, baseTk);
+
+    const satoriFonts = fonts.map((f) => ({ name: f.name, data: f.data, weight: f.weight, style: f.style }));
+    const renderSvg = async (contentTk: Tokens): Promise<string> => {
+      const root = await this.buildRoot(slide, doc, dims, contentTk, baseTk, templateId);
+      return satori(root as unknown as Parameters<typeof satori>[0], {
+        width: dims.width,
+        height: dims.height,
+        fonts: satoriFonts,
+      });
+    };
+
+    const zone = gwSafeArea(baseTk);
+    let svg = await renderSvg(tk);
+    let measured = measureSvgContent(svg, dims, zone);
+    let passes: 1 | 2 = 1;
+    let appliedScale = 1;
+
+    // Photo/collage templates anchor text at the bottom over a full-bleed
+    // image — a low vertical usage there is the design, not a defect.
+    const underfillExempt =
+      templateId.startsWith('gw_photo_') || templateId === 'gw_collage_showcase';
+
+    if (measured.contentBoxCount > 0) {
+      if (!underfillExempt && measured.contentUsageRatio < UNDERFILL_RATIO) {
+        // Grow toward ~80% zone usage, capped so brand type stays sane.
+        appliedScale = Math.min(
+          MAX_GROW_SCALE,
+          0.8 / Math.max(measured.contentUsageRatio, 0.2),
+        );
+      } else if (measured.overflow) {
+        appliedScale = OVERFLOW_SHRINK;
+      }
+      if (appliedScale !== 1) {
+        svg = await renderSvg(scaleTypographyTokens(tk, appliedScale));
+        measured = measureSvgContent(svg, dims, zone);
+        passes = 2;
+      }
+    }
+
+    const png = new Resvg(svg, { fitTo: { mode: 'width', value: dims.width } }).render().asPng();
+    return { png: Buffer.from(png), metrics: { ...measured, passes, appliedScale } };
+  }
+
+  private async buildRoot(
+    slide: SduiSlide,
+    doc: SduiDocument,
+    dims: { width: number; height: number },
+    tk: Tokens,
+    baseTk: Tokens,
+    templateId: ReturnType<typeof pickTemplate>,
+  ) {
     const isLast = slide.slide_number >= doc.slides.length;
 
+    // Chrome contrast follows the per-slide template background (lime/cream/
+    // blue/photo), not the static theme, so logo/tag/pagination stay legible.
+    const chromeFg = growhaleyChromeColors(slide, templateId).fg;
+    const chromeTk = {
+      ...baseTk,
+      role: {
+        ...baseTk.role,
+        chrome: { ...baseTk.role.chrome, color: chromeFg },
+        tag: { ...baseTk.role.tag, color: chromeFg },
+      },
+    };
+
+    // Logo color follows the same contrast rule: blue mark on light (lime/
+    // cream) backgrounds, white mark on dark/saturated (blue/ink/photo) ones.
+    const chromeDoc: SduiDocument = doc.theme.logoUrl
+      ? { ...doc, theme: { ...doc.theme, logoUrl: isLightChrome(chromeFg) ? GROWHALEY_LOGO_BLUE : GROWHALEY_LOGO_WHITE } }
+      : doc;
+
     const middle = await renderTemplate(templateId, slide, tk);
-    const topChromeNode = await topChrome(slide, chromeTk, doc);
-    const bottomChromeNode = await bottomChrome(slide, chromeTk, doc, isLast);
+    const topChromeNode = await topChrome(slide, chromeTk, chromeDoc);
+    const bottomChromeNode = await bottomChrome(slide, chromeTk, chromeDoc, isLast);
 
-    // cover_image_full is full-bleed: render without padding/chrome gaps overlaying
-    const isFullBleed =
-      templateId === 'cover_image_full' &&
-      has(slide, 'image_placeholder') &&
-      !!find(slide, 'image_placeholder')?.imageUrl;
+    // Growhaley templates are all full-bleed: each template paints its own
+    // canvas (background/blob/scrim/padding); chrome overlays on top.
+    const isFullBleed = templateId.startsWith('gw_');
 
-    const root = isFullBleed
+    return isFullBleed
       ? el(
           'div',
           {
@@ -138,13 +239,5 @@ export class SatoriRenderer {
             bottomChromeNode,
           ],
         );
-
-    const svg = await satori(root as unknown as Parameters<typeof satori>[0], {
-      width: dims.width,
-      height: dims.height,
-      fonts: fonts.map((f) => ({ name: f.name, data: f.data, weight: f.weight, style: f.style })),
-    });
-    const png = new Resvg(svg, { fitTo: { mode: 'width', value: dims.width } }).render().asPng();
-    return Buffer.from(png);
   }
 }

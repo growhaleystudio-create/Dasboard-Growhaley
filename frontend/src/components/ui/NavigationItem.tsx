@@ -20,7 +20,7 @@ export function NavigationItem({ href, icon, children, active = false, rightElem
       }`}
     >
       {icon && <div className="shrink-0 flex items-center justify-center size-[20px]">{icon}</div>}
-      <div className="flex flex-[1_0_0] flex-col font-inter font-medium justify-center leading-[0] min-w-px text-[14px] tracking-[-0.084px] truncate">
+      <div className="flex min-w-px flex-[1_0_0] flex-col justify-center truncate font-sans text-[14px] font-bold leading-[1.45] tracking-[-0.01em]">
         <p className="leading-[20px] truncate">{children}</p>
       </div>
       {rightElement && <div className="shrink-0 flex items-center justify-center">{rightElement}</div>}

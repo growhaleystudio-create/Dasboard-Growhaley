@@ -58,11 +58,15 @@ npm test
 
 | Skrip            | Deskripsi                                       |
 | ---------------- | ----------------------------------------------- |
-| `npm install`    | Memasang dependensi seluruh workspace           |
-| `npm run build`  | Build seluruh workspace (`tsc -b`)              |
-| `npm run lint`   | Lint seluruh workspace                          |
-| `npm run format` | Memformat seluruh repositori dengan Prettier    |
-| `npm test`       | Menjalankan test seluruh workspace (Vitest)     |
+| `npm install`         | Memasang dependensi seluruh workspace                    |
+| `npm run dev`         | Menjalankan backend build watch + backend API + frontend |
+| `npm run dev:worker`  | Menjalankan backend worker watcher                       |
+| `npm run dev:backend` | Menjalankan backend build watch + backend API            |
+| `npm run dev:frontend`| Menjalankan frontend saja                                |
+| `npm run build`       | Build seluruh workspace (`tsc -b`)                       |
+| `npm run lint`        | Lint seluruh workspace                                   |
+| `npm run format`      | Memformat seluruh repositori dengan Prettier             |
+| `npm test`            | Menjalankan test seluruh workspace (Vitest)              |
 
 ## Dokumentasi
 

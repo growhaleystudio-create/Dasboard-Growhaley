@@ -347,6 +347,13 @@ function contactFromTags(tags: Record<string, string>): string | undefined {
   return tag(tags, 'contact:email', 'email', 'contact:phone', 'phone');
 }
 
+function whatsappNumberFromTags(tags: Record<string, string>): string | undefined {
+  const raw = tag(tags, 'contact:phone', 'phone');
+  if (!raw) return undefined;
+  const digits = raw.replace(/\D/g, '');
+  return digits.length > 0 ? digits : undefined;
+}
+
 function websiteFromTags(tags: Record<string, string>): string | undefined {
   return tag(tags, 'contact:website', 'website', 'url', 'contact:facebook');
 }
@@ -507,6 +514,12 @@ export class GoogleScraperConnector implements Source_Connector {
       const contact = contactFromTags(tags);
       if (contact) {
         prospect.publicContact = contact;
+      }
+
+      const whatsappNumber = whatsappNumberFromTags(tags);
+      if (whatsappNumber) {
+        prospect.whatsappNumber = whatsappNumber;
+        prospect.whatsappUrl = `https://wa.me/${whatsappNumber}`;
       }
 
       const category = tag(tags, 'amenity', 'shop', 'tourism', 'leisure', 'healthcare', 'craft', 'office');

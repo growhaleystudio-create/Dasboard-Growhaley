@@ -33,6 +33,7 @@ import type { Lead } from '@leads-generator/shared';
 import { type Result, err, ok } from '@leads-generator/shared';
 
 import type { LeadRepository } from '../repository/lead-repository.js';
+import type { LeadScoringBreakdownRepository } from '../repository/lead-scoring-breakdown-repository.js';
 
 import { sortLeadsDefault } from './default-sort.js';
 import { type LeadFilter, matchesFilter, validateLeadFilter } from './lead-filter.js';
@@ -75,7 +76,10 @@ const CANDIDATE_LOAD_LIMIT = 100_000;
  * Query-side service for Leads. Read-only; never mutates Lead state.
  */
 export class LeadQueryService {
-  constructor(private readonly leads: LeadRepository) {}
+  constructor(
+    private readonly leads: LeadRepository,
+    private readonly breakdowns?: Pick<LeadScoringBreakdownRepository, 'findForLeads'>,
+  ) {}
 
   /**
    * Return canonical (non-duplicate) Leads for the Team in the default
@@ -83,7 +87,8 @@ export class LeadQueryService {
    * metric defaults (R6.1, R10.1).
    */
   async listDefault(teamId: string, opts: ListDefaultOptions = {}): Promise<Lead[]> {
-    return this.leads.listForTeam(teamId, { includeDuplicates: false, ...opts });
+    const leads = await this.leads.listForTeam(teamId, { includeDuplicates: false, ...opts });
+    return this.attachScoringBreakdowns(teamId, leads);
   }
 
   /**
@@ -121,13 +126,32 @@ export class LeadQueryService {
     const safePage = page < 0 ? 0 : Math.trunc(page);
     const safePageSize = Math.min(LEAD_PAGE_SIZE, Math.max(1, Math.trunc(pageSize)));
     const start = safePage * safePageSize;
-    const items = filtered.slice(start, start + safePageSize);
+    const items = await this.attachScoringBreakdowns(
+      teamId,
+      filtered.slice(start, start + safePageSize),
+    );
 
     return ok({
       items,
       page: safePage,
       pageSize: safePageSize,
       total: filtered.length,
+    });
+  }
+
+  private async attachScoringBreakdowns(teamId: string, leads: Lead[]): Promise<Lead[]> {
+    if (!this.breakdowns || leads.length === 0) {
+      return leads;
+    }
+
+    const byLeadId = await this.breakdowns.findForLeads(
+      teamId,
+      leads.map((lead) => lead.id),
+    );
+
+    return leads.map((lead) => {
+      const breakdown = byLeadId.get(lead.id);
+      return breakdown ? { ...lead, scoringBreakdown: breakdown } : lead;
     });
   }
 }

@@ -17,7 +17,14 @@
  *   used inside `withTransaction(tx => …)`.
  */
 
-import type { AIState, AIUnavailableReason, Lead, LeadStatus } from '@leads-generator/shared';
+import type {
+  AIState,
+  AIUnavailableReason,
+  Lead,
+  LeadAuditAttributes,
+  LeadStatus,
+  WhatsAppVerificationStatus,
+} from '@leads-generator/shared';
 
 import { mapLeadRow, type LeadRow } from './mapping.js';
 import { query, type DbExecutor } from './types.js';
@@ -31,10 +38,14 @@ const LEAD_COLUMNS = `
   public_contact,
   profile_url,
   location,
+  whatsapp_url,
+  whatsapp_number,
+  whatsapp_verification_status,
   matched_keywords,
   status,
   score,
   score_state,
+  audit_attributes,
   is_duplicate,
   duplicate_of,
   discovered_at,
@@ -85,7 +96,7 @@ export type LeadInsert = Omit<Lead, 'id' | 'createdAt'>;
  * scoring / AI / status columns are never touched by a merge.
  */
 export type LeadAttributePatch = Partial<
-  Pick<Lead, 'name' | 'publicContact' | 'profileUrl' | 'location'>
+  Pick<Lead, 'name' | 'publicContact' | 'profileUrl' | 'location' | 'whatsappUrl' | 'whatsappNumber'>
 >;
 
 /**
@@ -113,6 +124,8 @@ const ATTRIBUTE_PATCH_COLUMNS: readonly (readonly [keyof LeadAttributePatch, str
   ['publicContact', 'public_contact'],
   ['profileUrl', 'profile_url'],
   ['location', 'location'],
+  ['whatsappUrl', 'whatsapp_url'],
+  ['whatsappNumber', 'whatsapp_number'],
 ];
 
 /**
@@ -197,16 +210,18 @@ export class LeadRepository {
       this.db,
       `INSERT INTO lead (
          team_id, name, public_contact, profile_url, location,
-         matched_keywords, status, score, score_state,
+         whatsapp_url, whatsapp_number, whatsapp_verification_status,
+         matched_keywords, status, score, score_state, audit_attributes,
          is_duplicate, duplicate_of, discovered_at,
          acquired_source, acquired_at,
          ai_intent_score, ai_insight, ai_state, ai_unavailable_reason, ai_analyzed_at
        ) VALUES (
          $1, $2, $3, $4, $5,
-         $6, $7, $8, $9,
-         $10, $11, $12,
-         $13, $14,
-         $15, $16, $17, $18, $19
+         $6, $7, $8,
+         $9, $10, $11, $12, $13,
+         $14, $15, $16,
+         $17, $18,
+         $19, $20, $21, $22, $23
        )
        RETURNING ${LEAD_COLUMNS}`,
       [
@@ -215,10 +230,14 @@ export class LeadRepository {
         lead.publicContact ?? null,
         lead.profileUrl ?? null,
         lead.location ?? null,
+        lead.whatsappUrl ?? null,
+        lead.whatsappNumber ?? null,
+        lead.whatsappVerificationStatus,
         lead.matchedKeywords,
         lead.status,
         lead.score,
         lead.scoreState,
+        lead.auditAttributes ? JSON.stringify(lead.auditAttributes) : null,
         lead.isDuplicate,
         lead.duplicateOf ?? null,
         lead.discoveredAt,
@@ -247,6 +266,23 @@ export class LeadRepository {
       this.db,
       `UPDATE lead
           SET status = $3
+        WHERE team_id = $1 AND id = $2
+        RETURNING ${LEAD_COLUMNS}`,
+      [teamId, leadId, status],
+    );
+    if (rows.length === 0) return null;
+    return mapLeadRow(rows[0]!);
+  }
+
+  async updateWhatsappVerificationStatus(
+    teamId: string,
+    leadId: string,
+    status: WhatsAppVerificationStatus,
+  ): Promise<Lead | null> {
+    const rows = await query<LeadRow>(
+      this.db,
+      `UPDATE lead
+          SET whatsapp_verification_status = $3
         WHERE team_id = $1 AND id = $2
         RETURNING ${LEAD_COLUMNS}`,
       [teamId, leadId, status],
@@ -365,6 +401,20 @@ export class LeadRepository {
               score_state = $4
         WHERE team_id = $1 AND id = $2`,
       [teamId, leadId, score, scoreState],
+    );
+  }
+
+  async setAuditAttributes(
+    teamId: string,
+    leadId: string,
+    attributes: LeadAuditAttributes | null,
+  ): Promise<void> {
+    await query(
+      this.db,
+      `UPDATE lead
+          SET audit_attributes = $3
+        WHERE team_id = $1 AND id = $2`,
+      [teamId, leadId, attributes ? JSON.stringify(attributes) : null],
     );
   }
 

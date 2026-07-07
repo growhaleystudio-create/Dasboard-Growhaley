@@ -9,6 +9,7 @@
     "declaration": false,
     "declarationMap": false,
     "allowJs": true,
+    "types": ["node", "vitest/globals", "@testing-library/jest-dom"],
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./src/*"]

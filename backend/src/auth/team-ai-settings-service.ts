@@ -42,7 +42,18 @@ export class TeamAiSettingsService {
   constructor(
     private readonly repo: TeamAiSettingsRepository,
     private readonly vault: CredentialVault,
+    /**
+     * When set, ALL key/config operations resolve to this canonical team's
+     * row instead of the caller's team — one shared AI key for the whole
+     * single-tenant app. Unset ⇒ per-team (legacy). See env CENTRAL_AI_TEAM_ID.
+     */
+    private readonly centralTeamId?: string,
   ) {}
+
+  /** Route every settings op to the central team when configured. */
+  private resolve(teamId: string): string {
+    return this.centralTeamId ?? teamId;
+  }
 
   /**
    * Encrypt `plaintext` and persist the envelope for the given Team
@@ -59,7 +70,7 @@ export class TeamAiSettingsService {
       throw new Error('API key must not be empty');
     }
     const envelope = this.vault.encrypt(plaintext);
-    await this.repo.setEncryptedApiKey(teamId, envelope, purpose);
+    await this.repo.setEncryptedApiKey(this.resolve(teamId), envelope, purpose);
   }
 
   /**
@@ -67,16 +78,16 @@ export class TeamAiSettingsService {
    * no-op when no key was stored.
    */
   async clearApiKey(teamId: string, purpose: AiKeyPurpose = 'leads'): Promise<void> {
-    await this.repo.setEncryptedApiKey(teamId, null, purpose);
+    await this.repo.setEncryptedApiKey(this.resolve(teamId), null, purpose);
   }
 
   async setApiBaseUrl(teamId: string, baseUrl: string, purpose: AiKeyPurpose = 'leads'): Promise<void> {
     const normalized = normalizeBaseUrl(baseUrl);
-    await this.repo.setApiBaseUrl(teamId, purpose, normalized);
+    await this.repo.setApiBaseUrl(this.resolve(teamId), purpose, normalized);
   }
 
   async loadApiBaseUrl(teamId: string, purpose: AiKeyPurpose = 'leads'): Promise<string> {
-    const settings = await this.repo.getForTeam(teamId);
+    const settings = await this.repo.getForTeam(this.resolve(teamId));
     return purpose === 'image_generation' ? settings.imageGenerationApiBaseUrl : settings.textApiBaseUrl;
   }
 
@@ -88,7 +99,7 @@ export class TeamAiSettingsService {
    *   {@link CredentialVault.decrypt} on any envelope corruption.
    */
   async loadApiKey(teamId: string, purpose: AiKeyPurpose = 'leads'): Promise<string | null> {
-    const envelope = await this.repo.getEncryptedApiKeyForVault(teamId, purpose);
+    const envelope = await this.repo.getEncryptedApiKeyForVault(this.resolve(teamId), purpose);
     if (envelope === null) return null;
     return this.vault.decrypt(envelope);
   }
@@ -99,7 +110,7 @@ export class TeamAiSettingsService {
    * pre-check (Task 17.5) and the worker.
    */
   async hasApiKey(teamId: string, purpose?: AiKeyPurpose): Promise<boolean> {
-    const settings = await this.repo.getForTeam(teamId);
+    const settings = await this.repo.getForTeam(this.resolve(teamId));
     if (purpose === 'leads') return settings.hasLeadsApiKey;
     if (purpose === 'content_suggestion') return settings.hasContentSuggestionApiKey;
     if (purpose === 'image_generation') return settings.hasImageGenerationApiKey;
@@ -112,26 +123,26 @@ export class TeamAiSettingsService {
    * key is set. NEVER returns the API key plaintext or ciphertext.
    */
   async getSettings(teamId: string): Promise<TeamAiSettings> {
-    return this.repo.getForTeam(teamId);
+    return this.repo.getForTeam(this.resolve(teamId));
   }
 
   /** Enable or disable AI globally for a Team (R13.18). */
   async setAiEnabled(teamId: string, enabled: boolean): Promise<void> {
-    await this.repo.setAiEnabled(teamId, enabled);
+    await this.repo.setAiEnabled(this.resolve(teamId), enabled);
   }
 
   async setTextModel(teamId: string, model: string): Promise<void> {
     if (model.trim().length === 0) {
       throw new Error('Text model name must not be empty');
     }
-    await this.repo.setTextModel(teamId, model.trim());
+    await this.repo.setTextModel(this.resolve(teamId), model.trim());
   }
 
   async setImageModel(teamId: string, model: string): Promise<void> {
     if (model.trim().length === 0) {
       throw new Error('Image model name must not be empty');
     }
-    await this.repo.setImageModel(teamId, model.trim());
+    await this.repo.setImageModel(this.resolve(teamId), model.trim());
   }
 
   /**
@@ -145,7 +156,7 @@ export class TeamAiSettingsService {
     if (!Number.isInteger(n) || n < 0) {
       throw new Error('AI_Call_Budget must be a non-negative integer');
     }
-    await this.repo.setCallBudget30d(teamId, n);
+    await this.repo.setCallBudget30d(this.resolve(teamId), n);
   }
 
   /**
@@ -158,7 +169,7 @@ export class TeamAiSettingsService {
     if (!Number.isFinite(w) || w < 0) {
       throw new Error('ai_intent_match weight must be a non-negative number');
     }
-    await this.repo.setAiIntentFactorWeight(teamId, w);
+    await this.repo.setAiIntentFactorWeight(this.resolve(teamId), w);
   }
 }
 

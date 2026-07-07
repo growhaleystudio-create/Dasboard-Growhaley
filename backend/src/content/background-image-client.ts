@@ -139,10 +139,14 @@ function buildBackgroundPrompt(
   if (kind === 'content') {
     // Subject-focused editorial illustration for an image_placeholder.
     // Style stays anchored to the original user request when they specify one.
+    // The fixed art-direction suffix keeps every generated visual on the
+    // Growhaley look (editorial, cool-toned, uncluttered) so photos from
+    // different jobs still read as one brand.
     return (
       `${userPrompt}.` +
       buildContentStyleHint(userPrompt, stylePrompt) +
       ` Keep the image clean, professional, high quality, and useful as a content visual.` +
+      ` Brand art direction: modern editorial look, cool blue-leaning tones, generous negative space, uncluttered single-subject composition.` +
       ` No text, no words, no letters, no numbers, no captions, no watermark, no logo, no UI mockup chrome.` +
       paletteHint +
       referenceHint
@@ -328,7 +332,7 @@ function shouldRequestOpenAiImageResponseFormat(imageModel: string): boolean {
 /**
  * Calls the Imagen 3 Predict API and returns the first generated image as a Buffer.
  *
- * POST `${baseUrl}?key=${apiKey}`
+ * POST `${baseUrl}` with header `x-goog-api-key`
  * Body: { instances: [{ prompt }], parameters: { sampleCount: 1, aspectRatio, personGeneration } }
  * Response: { predictions: [{ bytesBase64Encoded: "..." }] }
  */
@@ -339,7 +343,9 @@ async function callImagenApi(
   aspectRatio: string,
   signal: AbortSignal,
 ): Promise<Buffer> {
-  const url = `${baseUrl}?key=${encodeURIComponent(apiKey)}`;
+  // Key goes in a header, never the URL query — a `?key=` would leak into
+  // proxy/CDN/access logs and Referer.
+  const url = baseUrl;
 
   const body = JSON.stringify({
     instances: [{ prompt }],
@@ -352,7 +358,7 @@ async function callImagenApi(
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body,
     signal,
   });

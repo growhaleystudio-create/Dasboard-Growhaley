@@ -36,7 +36,9 @@ export type AuditAction =
   | 'dsar_delete'
   | 'ai_call'
   | 'content_generate'
-  | 'content_manage';
+  | 'content_manage'
+  | 'survey_analysis'
+  | 'survey_export';
 
 /**
  * A single audit entry to be appended to `audit_log`.
