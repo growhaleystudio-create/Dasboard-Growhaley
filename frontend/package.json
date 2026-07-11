@@ -4,7 +4,7 @@
   "private": true,
   "description": "Next.js App Router frontend for Leads Generation Dashboard",
   "scripts": {
-    "build": "next build",
+    "build": "tsc -b ../shared && next build",
     "dev": "rm -rf .next && next dev",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
