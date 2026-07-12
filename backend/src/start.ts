@@ -570,6 +570,14 @@ async function start() {
   try {
     await server.listen({ port: env.PORT, host: '0.0.0.0' });
     console.log(`🚀 API Server is running on port ${env.PORT}`);
+
+    // Jalankan background worker di dalam proses yang sama untuk production di Render (agar bypass CC / gratis)
+    if (env.NODE_ENV === 'production') {
+      console.log('Production: Starting background workers in-process...');
+      import('./worker.js').catch((err) => {
+        console.error('❌ Failed to start background worker in-process:', err);
+      });
+    }
   } catch (err) {
     console.error('Error starting server:', err);
     process.exit(1);
