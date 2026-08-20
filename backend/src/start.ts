@@ -33,6 +33,7 @@ import { ExampleGoogleSearchConnector } from './connector/example-google-search.
 import { RapidApiGoogleConnector } from './connector/rapidapi-google.js';
 import { ApifyGoogleMapsConnector } from './connector/apify-google-maps.js';
 import { GoogleScraperConnector } from './connector/google-scraper.js';
+import { GoogleMapsHeadlessConnector } from './connector/google-maps-headless.js';
 import { SocialApiConnector } from './connector/social-api-connectors.js';
 import { ScanConfigService } from './scan/scan-config-service.js';
 import { LeadManager } from './lead/lead-manager.js';
