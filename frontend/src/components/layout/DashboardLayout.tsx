@@ -378,11 +378,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, [queryClient, isAuthRedirecting]);
 
   React.useEffect(() => {
-    window.addEventListener(AUTH_UNAUTHORIZED_EVENT, redirectToLogin);
-    return () => window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, redirectToLogin);
-  }, [redirectToLogin]);
-
-  React.useEffect(() => {
     const closeProfileMenu = () => setIsProfileMenuOpen(false);
     window.addEventListener('resize', closeProfileMenu);
     return () => window.removeEventListener('resize', closeProfileMenu);

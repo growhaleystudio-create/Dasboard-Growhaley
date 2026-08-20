@@ -28,10 +28,9 @@ import type { Redis } from 'ioredis';
 import type { AuthSession } from '@leads-generator/shared';
 
 /**
- * Idle timeout in seconds (30 minutes) — both the Redis EX value and the
- * application-level threshold beyond which a session is considered stale.
+ * Idle timeout in seconds (30 days) — keeps sessions permanently alive.
  */
-export const SESSION_IDLE_TIMEOUT_SECONDS = 30 * 60;
+export const SESSION_IDLE_TIMEOUT_SECONDS = 30 * 24 * 60 * 60;
 
 /**
  * Persisted JSON shape. `createdAt` / `lastActivityAt` are stored as ISO

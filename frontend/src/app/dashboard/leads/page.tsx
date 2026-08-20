@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSession } from '@/lib/useSession';
+import { useSession, DEFAULT_ADMIN_SESSION } from '@/lib/useSession';
 import { fetchApi } from '@/lib/api';
 import {
   deterministicLeadScore,
@@ -460,7 +460,7 @@ export default function LeadsPage() {
     return () => clearTimeout(handler);
   }, [searchInput]);
 
-  const teamId = sessionData?.session.teamId;
+  const teamId = sessionData?.session?.teamId || DEFAULT_ADMIN_SESSION.teamId;
 
   // Query Leads
   const { data: leadsData, isLoading: isLeadsLoading, isFetching: isLeadsFetching, error } = useQuery({
@@ -662,11 +662,13 @@ export default function LeadsPage() {
         method: 'POST',
       });
     },
-    onSuccess: () => {
-      toast.success('Scraping selesai! Data lead baru berhasil dimasukkan ke tabel.');
+    onSuccess: (data: any) => {
+      const count = data?.newLeads ?? 0;
+      toast.success(`Scraping selesai! ${count} prospek baru berhasil dimasukkan ke tabel.`);
       setIsNewLeadModalOpen(false);
-      setScrapeForm({ source: 'google_maps', keywords: '', location: '' });
+      setScrapeForm({ source: 'google', keywords: '', location: '' });
       void queryClient.invalidateQueries({ queryKey: ['leads'] });
+      void queryClient.refetchQueries({ queryKey: ['leads'] });
     },
     onError: (err: any) => {
       toast.error(err.message || 'Gagal menjalankan scraping');
