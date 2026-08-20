@@ -593,7 +593,7 @@ export default function LeadsPage() {
     },
   });
 
-  if (isSessionLoading) {
+  if (isSessionLoading || !teamId) {
     return (
       <div className="flex w-full flex-col gap-5 pb-12">
         <PageHeaderSkeleton />
@@ -623,7 +623,6 @@ export default function LeadsPage() {
       </div>
     );
   }
-  if (!teamId) return <div className="p-4">Error: No active team session.</div>;
 
   const formatDate = (value: Date | string | undefined) => {
     if (!value) return '-';

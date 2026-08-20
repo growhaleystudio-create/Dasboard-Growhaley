@@ -376,7 +376,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, [redirectToLogin]);
 
   React.useEffect(() => {
-    if (sessionError instanceof AppError && sessionError.status === 401) {
+    const status = (sessionError as any)?.status ?? (sessionError as any)?.statusCode;
+    if (status === 401 || (sessionError as any)?.code === 'AUTH') {
       redirectToLogin();
     }
   }, [redirectToLogin, sessionError]);
@@ -387,10 +388,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('resize', closeProfileMenu);
   }, []);
 
-  const shouldBlockChildren =
-    isAuthRedirecting ||
-    (isSessionLoading && !sessionData?.session) ||
-    (!sessionData?.session && !sessionError);
+  const shouldBlockChildren = isAuthRedirecting;
 
   return (
     <div
