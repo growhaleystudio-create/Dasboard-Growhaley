@@ -60,7 +60,7 @@ export const authRoutes = (deps: AuthRoutesDeps): FastifyPluginAsync => async (f
     reply.setCookie('sessionId', sessionId, {
       path: '/',
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       sameSite: 'lax',
       maxAge: 30 * 60, // 30 minutes
     });

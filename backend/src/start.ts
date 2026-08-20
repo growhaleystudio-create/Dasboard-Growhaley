@@ -103,12 +103,10 @@ async function start() {
   // Database connection
   const dbPool = getPool();
 
-  // Redis connections. In development, auth sessions stay in memory so a
-  // flaky remote Redis URL does not randomly log the user out.
+  // Redis connections
   const useRedisQueue = env.NODE_ENV !== 'development';
   const redisQueueClient = useRedisQueue ? createRedisClient(env.REDIS_URL) : null;
-  const redisSessionClient =
-    env.NODE_ENV === 'development' ? null : createRedisSessionClient(env.REDIS_URL);
+  const redisSessionClient = env.REDIS_URL ? createRedisSessionClient(env.REDIS_URL) : null;
   if (!redisQueueClient) {
     console.warn(
       '⚠️  Development mode: Redis queues are disabled; content jobs use the in-process fallback runner.',
@@ -122,11 +120,6 @@ async function start() {
   const sessionStore = redisSessionClient
     ? new RedisSessionStore(redisSessionClient)
     : new InMemorySessionStore();
-  if (!redisSessionClient) {
-    console.warn(
-      '⚠️  Development mode: using in-memory session store because Redis session storage is disabled.',
-    );
-  }
   const invitationsRepo = new InvitationRepository(dbPool);
 
   const leadsRepo = new LeadRepository(dbPool);
