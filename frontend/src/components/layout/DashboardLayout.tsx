@@ -357,18 +357,25 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       if (typeof document !== 'undefined') {
         document.cookie = 'sessionId=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
       }
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('sessionId');
+      }
       window.location.href = '/login';
     },
   });
 
   const redirectToLogin = React.useCallback(() => {
+    if (isAuthRedirecting) return;
     setIsAuthRedirecting(true);
     queryClient.clear();
     if (typeof document !== 'undefined') {
       document.cookie = 'sessionId=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
     }
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('sessionId');
+    }
     window.location.href = '/login';
-  }, [queryClient]);
+  }, [queryClient, isAuthRedirecting]);
 
   React.useEffect(() => {
     window.addEventListener(AUTH_UNAUTHORIZED_EVENT, redirectToLogin);
@@ -376,11 +383,20 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, [redirectToLogin]);
 
   React.useEffect(() => {
+    if (!sessionError) return;
     const status = (sessionError as any)?.status ?? (sessionError as any)?.statusCode;
     if (status === 401 || (sessionError as any)?.code === 'AUTH') {
       redirectToLogin();
     }
   }, [redirectToLogin, sessionError]);
+
+  // If session finished loading and there's no session data and no error, redirect
+  React.useEffect(() => {
+    if (!isSessionLoading && !sessionData?.session && !sessionError && !isAuthRedirecting) {
+      // No session, no error — user is not authenticated
+      redirectToLogin();
+    }
+  }, [isSessionLoading, sessionData, sessionError, isAuthRedirecting, redirectToLogin]);
 
   React.useEffect(() => {
     const closeProfileMenu = () => setIsProfileMenuOpen(false);
@@ -388,7 +404,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('resize', closeProfileMenu);
   }, []);
 
-  const shouldBlockChildren = isAuthRedirecting;
+  const shouldBlockChildren = isAuthRedirecting || isSessionLoading;
 
   return (
     <div
