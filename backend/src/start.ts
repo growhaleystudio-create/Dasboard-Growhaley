@@ -117,9 +117,7 @@ async function start() {
   const vault = createCredentialVault(env);
   const usersRepo = new AppUserRepository(dbPool);
   const membershipsRepo = new MembershipRepository(dbPool);
-  const sessionStore = redisSessionClient
-    ? new RedisSessionStore(redisSessionClient)
-    : new InMemorySessionStore();
+  const sessionStore = new InMemorySessionStore();
   const invitationsRepo = new InvitationRepository(dbPool);
 
   const leadsRepo = new LeadRepository(dbPool);
