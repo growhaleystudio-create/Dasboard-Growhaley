@@ -516,6 +516,7 @@ async function start() {
       leadRoutes: {
         manager: leadManager,
         query: leadQueryService,
+        leadsRepo,
       },
       metricsRoutes: {
         metricsService,

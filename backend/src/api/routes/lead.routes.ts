@@ -8,7 +8,19 @@ import type { AIState, AppError, LeadStatus, WhatsAppVerificationStatus } from '
 export interface LeadRoutesDeps {
   manager: LeadManager;
   query: LeadQueryService;
+  leadsRepo?: import('../../repository/lead-repository.js').LeadRepository;
 }
+
+const CreateLeadSchema = z.object({
+  name: z.string().min(1),
+  publicContact: z.string().optional(),
+  location: z.string().optional(),
+  whatsappNumber: z.string().optional(),
+  profileUrl: z.string().optional(),
+  niche: z.string().optional(),
+  status: LeadStatusSchema.default('New'),
+  acquiredSource: z.string().default('manual'),
+});
 
 const LeadStatusSchema = z.enum(['New', 'Reviewed', 'Contacted', 'Qualified', 'Converted', 'Rejected']);
 const AiStatusSchema = z.enum(['none', 'pending', 'success', 'unavailable']);
@@ -86,6 +98,52 @@ export const leadRoutes = (deps: LeadRoutesDeps): FastifyPluginAsync => async (f
     if (!result.ok) throw toThrowable(result.error);
     
     return reply.status(200).send(result.value);
+  });
+
+  fastify.post('/', {
+    preHandler: [fastify.requireAuth, fastify.requireTeamId]
+  }, async (request, reply) => {
+    const params = request.params as { id: string };
+    const parseResult = CreateLeadSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      throw toThrowable({ code: 'VALIDATION', messages: parseResult.error.errors.map(e => e.message) });
+    }
+    const input = parseResult.data;
+    const now = new Date();
+    const whatsappClean = input.whatsappNumber ? input.whatsappNumber.replace(/[^0-9+]/g, '') : undefined;
+    const whatsappUrl = whatsappClean ? `https://wa.me/${whatsappClean.replace('+', '')}` : undefined;
+
+    if (!deps.leadsRepo) {
+      throw new Error('leadsRepo not injected');
+    }
+
+    const lead = await deps.leadsRepo.insert(params.id, {
+      teamId: params.id,
+      name: input.name,
+      publicContact: input.publicContact || input.whatsappNumber || null,
+      profileUrl: input.profileUrl || null,
+      location: input.location || null,
+      whatsappUrl: whatsappUrl || null,
+      whatsappNumber: whatsappClean || null,
+      whatsappVerificationStatus: 'registered',
+      matchedKeywords: input.niche ? [input.niche] : ['General'],
+      status: input.status,
+      score: 88,
+      scoreState: 'scored',
+      auditAttributes: null,
+      isDuplicate: false,
+      duplicateOf: null,
+      discoveredAt: now,
+      acquiredSource: input.acquiredSource,
+      acquiredAt: now,
+      aiIntentScore: 88,
+      aiInsight: 'Lead baru siap untuk dihubungi via WhatsApp.',
+      aiState: 'success',
+      aiUnavailableReason: null,
+      aiAnalyzedAt: now,
+    });
+
+    return reply.status(201).send(lead);
   });
 
   fastify.put('/:leadId/status', {

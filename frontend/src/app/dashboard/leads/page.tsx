@@ -436,6 +436,22 @@ export default function LeadsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
+  const [newLeadTab, setNewLeadTab] = useState<'scrape' | 'manual'>('scrape');
+  const [scrapeForm, setScrapeForm] = useState({
+    source: 'google_maps',
+    keywords: '',
+    location: '',
+  });
+  const [manualForm, setManualForm] = useState({
+    name: '',
+    whatsappNumber: '',
+    location: '',
+    niche: '',
+    profileUrl: '',
+    status: 'New' as LeadStatus,
+  });
+
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchInput);
@@ -600,6 +616,60 @@ export default function LeadsPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['leads', teamId] });
+    },
+  });
+
+  const createLeadMutation = useMutation({
+    mutationFn: (payload: typeof manualForm) => {
+      if (!teamId) throw new Error('No active team');
+      return fetchApi(`/api/teams/${teamId}/leads`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+    onSuccess: () => {
+      toast.success('Lead berhasil ditambahkan!');
+      setIsNewLeadModalOpen(false);
+      setManualForm({ name: '', whatsappNumber: '', location: '', niche: '', profileUrl: '', status: 'New' });
+      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Gagal menambahkan lead');
+    },
+  });
+
+  const runScrapeMutation = useMutation({
+    mutationFn: async (payload: typeof scrapeForm) => {
+      if (!teamId) throw new Error('No active team');
+      const keywordsArray = payload.keywords.split(',').map((k) => k.trim()).filter(Boolean);
+      if (keywordsArray.length === 0) throw new Error('Mohon masukkan minimal 1 kata kunci / keyword');
+
+      const configRes = await fetchApi<{ configuration: { id: string } }>(`/api/teams/${teamId}/scans`, {
+        method: 'POST',
+        body: JSON.stringify({
+          keywords: keywordsArray,
+          niche: payload.keywords.trim(),
+          location: payload.location.trim() || undefined,
+          sourceIds: [payload.source],
+          aiEnabled: true,
+        }),
+      });
+
+      const configId = configRes?.configuration?.id;
+      if (!configId) throw new Error('Gagal membuat konfigurasi scan');
+
+      return fetchApi(`/api/teams/${teamId}/scans/${configId}/run`, {
+        method: 'POST',
+      });
+    },
+    onSuccess: () => {
+      toast.success('Scraping selesai! Data lead baru berhasil dimasukkan ke tabel.');
+      setIsNewLeadModalOpen(false);
+      setScrapeForm({ source: 'google_maps', keywords: '', location: '' });
+      void queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Gagal menjalankan scraping');
     },
   });
 
@@ -788,7 +858,12 @@ export default function LeadsPage() {
             <Button variant="secondary" leftIcon={<Download size={16} />} onClick={exportToExcel} disabled={isExporting} className="w-full sm:w-auto">
               {isExporting ? 'Exporting...' : 'Export'}
             </Button>
-            <Button variant="primary" leftIcon={<Plus size={16} />} className="w-full sm:w-auto">
+            <Button
+              variant="primary"
+              leftIcon={<Plus size={16} />}
+              onClick={() => setIsNewLeadModalOpen(true)}
+              className="w-full sm:w-auto"
+            >
               New Lead
             </Button>
           </div>
@@ -1178,6 +1253,200 @@ export default function LeadsPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* New Lead & Auto Scraping Modal */}
+      <Modal
+        isOpen={isNewLeadModalOpen}
+        onClose={() => setIsNewLeadModalOpen(false)}
+        title="Add New Lead & Auto Scraper"
+        description="Pilih metode: Scrape leads secara otomatis dengan AI atau input data lead secara manual."
+        size="lg"
+      >
+        <div className="flex flex-col gap-5">
+          {/* Tab Selector */}
+          <div className="flex rounded-xl bg-bg-weak-50 p-1 border border-stroke-soft-200">
+            <button
+              type="button"
+              onClick={() => setNewLeadTab('scrape')}
+              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                newLeadTab === 'scrape'
+                  ? 'bg-white text-text-strong-950 shadow-sm border border-stroke-soft-200'
+                  : 'text-text-soft-400 hover:text-text-strong-950'
+              }`}
+            >
+              <Sparkles size={16} className="text-primary-base" />
+              Auto Scraping (AI)
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewLeadTab('manual')}
+              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                newLeadTab === 'manual'
+                  ? 'bg-white text-text-strong-950 shadow-sm border border-stroke-soft-200'
+                  : 'text-text-soft-400 hover:text-text-strong-950'
+              }`}
+            >
+              <Plus size={16} />
+              Manual Input
+            </button>
+          </div>
+
+          {newLeadTab === 'scrape' ? (
+            <div className="flex flex-col gap-4">
+              <div className="rounded-xl bg-primary-soft-50/50 border border-primary-base/20 p-3.5 flex items-start gap-2.5 text-xs text-text-strong-950">
+                <Sparkles size={16} className="text-primary-base shrink-0 mt-0.5" />
+                <p>
+                  Sistem AI scraper akan mencari target prospek, nomor WhatsApp, website, serta menghitung <strong>Lead Opportunity Score</strong> secara otomatis.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-semibold text-text-soft-400 uppercase tracking-wider mb-1.5 block">
+                    Sumber Scraping (Data Source)
+                  </label>
+                  <Select
+                    value={scrapeForm.source}
+                    onChange={(e) => setScrapeForm((prev) => ({ ...prev, source: e.target.value }))}
+                    options={[
+                      { label: '📍 Google Maps (Direktori Bisnis & Kontak)', value: 'google_maps' },
+                      { label: '🌐 Google Search (Website & Bisnis Lokal)', value: 'google' },
+                      { label: '📸 Instagram (Profil Bisnis & Kreator)', value: 'instagram' },
+                      { label: '💼 LinkedIn (Perusahaan & Eksekutif)', value: 'linkedin' },
+                    ]}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-text-soft-400 uppercase tracking-wider mb-1.5 block">
+                    Kata Kunci / Niche (Pisahkan dengan koma)
+                  </label>
+                  <Input
+                    placeholder="Contoh: Hotel, Cafe, Klinik Estetika, Villa"
+                    value={scrapeForm.keywords}
+                    onChange={(e) => setScrapeForm((prev) => ({ ...prev, keywords: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-text-soft-400 uppercase tracking-wider mb-1.5 block">
+                    Lokasi / Kota Target
+                  </label>
+                  <Input
+                    placeholder="Contoh: Bali, Jakarta Selatan, Bandung"
+                    value={scrapeForm.location}
+                    onChange={(e) => setScrapeForm((prev) => ({ ...prev, location: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-end gap-3 border-t border-stroke-soft-200 pt-4">
+                <Button variant="secondary" onClick={() => setIsNewLeadModalOpen(false)}>
+                  Batal
+                </Button>
+                <Button
+                  variant="primary"
+                  loading={runScrapeMutation.isPending}
+                  disabled={!scrapeForm.keywords.trim() || runScrapeMutation.isPending}
+                  onClick={() => runScrapeMutation.mutate(scrapeForm)}
+                  leftIcon={<Sparkles size={16} />}
+                >
+                  {runScrapeMutation.isPending ? 'Sedang Scraping...' : 'Mulai Scraping Leads'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-semibold text-text-soft-400 uppercase tracking-wider mb-1.5 block">
+                    Nama Bisnis / Prospek *
+                  </label>
+                  <Input
+                    placeholder="Nama bisnis atau prospek"
+                    value={manualForm.name}
+                    onChange={(e) => setManualForm((prev) => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-text-soft-400 uppercase tracking-wider mb-1.5 block">
+                    Nomor WhatsApp / HP
+                  </label>
+                  <Input
+                    placeholder="Contoh: 08123456789"
+                    value={manualForm.whatsappNumber}
+                    onChange={(e) => setManualForm((prev) => ({ ...prev, whatsappNumber: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-text-soft-400 uppercase tracking-wider mb-1.5 block">
+                    Lokasi / Kota
+                  </label>
+                  <Input
+                    placeholder="Contoh: Jakarta, Bali, Surabaya"
+                    value={manualForm.location}
+                    onChange={(e) => setManualForm((prev) => ({ ...prev, location: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-text-soft-400 uppercase tracking-wider mb-1.5 block">
+                    Niche / Kategori
+                  </label>
+                  <Input
+                    placeholder="Contoh: Cafe, Retail, Hotel"
+                    value={manualForm.niche}
+                    onChange={(e) => setManualForm((prev) => ({ ...prev, niche: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-text-soft-400 uppercase tracking-wider mb-1.5 block">
+                    Website / Link Profil
+                  </label>
+                  <Input
+                    placeholder="https://..."
+                    value={manualForm.profileUrl}
+                    onChange={(e) => setManualForm((prev) => ({ ...prev, profileUrl: e.target.value }))}
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-semibold text-text-soft-400 uppercase tracking-wider mb-1.5 block">
+                    Status Awal
+                  </label>
+                  <Select
+                    value={manualForm.status}
+                    onChange={(e) => setManualForm((prev) => ({ ...prev, status: e.target.value as LeadStatus }))}
+                    options={[
+                      { label: 'New', value: 'New' },
+                      { label: 'Reviewed', value: 'Reviewed' },
+                      { label: 'Contacted', value: 'Contacted' },
+                      { label: 'Qualified', value: 'Qualified' },
+                    ]}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-end gap-3 border-t border-stroke-soft-200 pt-4">
+                <Button variant="secondary" onClick={() => setIsNewLeadModalOpen(false)}>
+                  Batal
+                </Button>
+                <Button
+                  variant="primary"
+                  loading={createLeadMutation.isPending}
+                  disabled={!manualForm.name.trim() || createLeadMutation.isPending}
+                  onClick={() => createLeadMutation.mutate(manualForm)}
+                >
+                  {createLeadMutation.isPending ? 'Menyimpan...' : 'Simpan Lead'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );
