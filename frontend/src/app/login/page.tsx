@@ -167,8 +167,10 @@ export default function LoginPage() {
       queryClient.clear();
       if (data.sessionId && typeof window !== 'undefined') {
         localStorage.setItem('sessionId', data.sessionId);
-        // Also set cookie manually as fallback in case Set-Cookie header was stripped
         document.cookie = `sessionId=${data.sessionId}; Path=/; Max-Age=1800; SameSite=Lax; Secure`;
+      }
+      if (data.session && typeof window !== 'undefined') {
+        localStorage.setItem('auth_session', JSON.stringify(data.session));
       }
       queryClient.setQueryData<SessionResponse>(['session'], { session: data.session });
       window.location.href = '/dashboard/leads';
