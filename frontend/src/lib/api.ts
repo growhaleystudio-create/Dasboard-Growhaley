@@ -45,6 +45,16 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
 
   // Include credentials (cookies) to send the session token automatically
   options.credentials = 'include';
+
+  // Attach session token from localStorage if available
+  if (typeof window !== 'undefined') {
+    const sessionId = localStorage.getItem('sessionId');
+    if (sessionId && !headers.has('x-session-id')) {
+      headers.set('x-session-id', sessionId);
+      headers.set('Authorization', `Bearer ${sessionId}`);
+    }
+  }
+
   options.headers = headers;
 
   const response = await fetch(url, options);

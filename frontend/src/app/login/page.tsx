@@ -158,15 +158,18 @@ export default function LoginPage() {
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: { email: string; password: string }) => {
-      return fetchApi<{ message: string; session: SessionResponse['session'] }>('/api/auth/login', {
+      return fetchApi<{ message: string; sessionId?: string; session: SessionResponse['session'] }>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify(credentials),
       });
     },
     onSuccess: (data) => {
       queryClient.clear();
+      if (data.sessionId && typeof window !== 'undefined') {
+        localStorage.setItem('sessionId', data.sessionId);
+      }
       queryClient.setQueryData<SessionResponse>(['session'], { session: data.session });
-      window.location.href = '/dashboard';
+      window.location.href = '/dashboard/leads';
     },
   });
 

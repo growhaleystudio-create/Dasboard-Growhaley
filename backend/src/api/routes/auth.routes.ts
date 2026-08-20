@@ -67,6 +67,7 @@ export const authRoutes = (deps: AuthRoutesDeps): FastifyPluginAsync => async (f
 
     return reply.status(200).send({
       message: 'Logged in successfully',
+      sessionId,
       session: {
         userId: session.userId,
         email: user.email,

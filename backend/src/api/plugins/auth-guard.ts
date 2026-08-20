@@ -39,7 +39,12 @@ const authGuardPlugin: FastifyPluginAsync<AuthGuardOptions> = async (fastify, op
   fastify.decorate(
     'requireAuth',
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const sessionId = request.cookies['sessionId'];
+      const authHeader = request.headers['authorization'];
+      const bearerToken = typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
+        ? authHeader.slice(7).trim()
+        : null;
+      const headerSessionId = (request.headers['x-session-id'] as string) || bearerToken;
+      const sessionId = request.cookies['sessionId'] || headerSessionId;
       if (!sessionId) {
         throw { code: 'AUTH', errorCode: 'AUTH_SESSION_MISSING', message: 'Missing session' } as AppError;
       }
