@@ -593,7 +593,7 @@ export default function LeadsPage() {
     },
   });
 
-  if (isSessionLoading || !teamId || isLeadsLoading) {
+  if (isSessionLoading || (teamId && isLeadsLoading)) {
     return (
       <div className="flex w-full flex-col gap-5 pb-12">
         <PageHeaderSkeleton />
@@ -619,6 +619,20 @@ export default function LeadsPage() {
           <div className="overflow-hidden rounded-2xl border border-stroke-soft-200 bg-white p-3 shadow-none sm:p-4">
             <AlignLeadTable leads={[]} isLoading />
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!teamId) {
+    return (
+      <div className="flex w-full flex-col items-center justify-center min-h-[400px] gap-4 text-center p-6">
+        <div className="rounded-2xl border border-stroke-soft-200 bg-white p-8 max-w-md w-full shadow-sm flex flex-col items-center gap-4">
+          <p className="text-base font-semibold text-text-strong-950">Belum Masuk ke Akun</p>
+          <p className="text-sm text-text-sub-600">Sesi Anda belum aktif. Silakan masuk untuk mengakses tabel leads.</p>
+          <Button variant="primary" onClick={() => { window.location.href = '/login'; }} className="w-full mt-2">
+            Masuk ke Akun
+          </Button>
         </div>
       </div>
     );
