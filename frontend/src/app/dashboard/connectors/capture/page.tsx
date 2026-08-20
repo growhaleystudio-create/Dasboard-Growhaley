@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
@@ -11,7 +13,7 @@ import { AppError, fetchApi } from '@/lib/api';
 import { useExtensionBridge } from '@/lib/extension/bridge';
 import type { GoogleMapsScrapeSessionResponse } from '@/lib/types';
 
-export default function GoogleMapsCapturePage() {
+function GoogleMapsCaptureContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('sessionId');
   const captureToken = searchParams.get('captureToken');
@@ -163,6 +165,14 @@ export default function GoogleMapsCapturePage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function GoogleMapsCapturePage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-text-soft-400">Loading capture session...</div>}>
+      <GoogleMapsCaptureContent />
+    </Suspense>
   );
 }
 
