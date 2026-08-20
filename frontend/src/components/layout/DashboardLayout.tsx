@@ -354,15 +354,21 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     mutationFn: () => fetchApi<{ message: string }>('/api/auth/logout', { method: 'POST' }),
     onSuccess: () => {
       queryClient.clear();
-      router.replace('/login');
+      if (typeof document !== 'undefined') {
+        document.cookie = 'sessionId=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+      }
+      window.location.href = '/login';
     },
   });
 
   const redirectToLogin = React.useCallback(() => {
     setIsAuthRedirecting(true);
     queryClient.clear();
-    router.replace('/login');
-  }, [queryClient, router]);
+    if (typeof document !== 'undefined') {
+      document.cookie = 'sessionId=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    }
+    window.location.href = '/login';
+  }, [queryClient]);
 
   React.useEffect(() => {
     window.addEventListener(AUTH_UNAUTHORIZED_EVENT, redirectToLogin);
@@ -383,10 +389,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   const shouldBlockChildren =
     isAuthRedirecting ||
-    isSessionLoading ||
-    !isSessionFetchedAfterMount ||
-    !sessionData?.session ||
-    (sessionError instanceof AppError && sessionError.status === 401);
+    (isSessionLoading && !sessionData?.session) ||
+    (!sessionData?.session && !sessionError);
 
   return (
     <div
