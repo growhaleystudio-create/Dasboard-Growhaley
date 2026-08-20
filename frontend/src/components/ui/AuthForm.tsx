@@ -7,8 +7,6 @@ export interface AuthFormProps extends React.HTMLAttributes<HTMLDivElement> {
   type?: "login" | "signup";
   onSubmit?: (e: React.FormEvent) => void;
   onForgotPassword?: () => void;
-  onSocialLogin?: (provider: "google" | "github" | "apple") => void;
-  onToggleType?: () => void;
   loading?: boolean;
 }
 
@@ -16,13 +14,10 @@ export function AuthForm({
   type = "login",
   onSubmit,
   onForgotPassword,
-  onSocialLogin,
-  onToggleType,
   loading = false,
   className,
   ...props
 }: AuthFormProps) {
-  const isLogin = type === "login";
   const [showPassword, setShowPassword] = React.useState(false);
 
   return (
@@ -36,13 +31,13 @@ export function AuthForm({
       {/* Header */}
       <div className="flex flex-col gap-2 items-center text-center">
         <div className="mb-2 flex items-center justify-center">
-          <img src="/figma/logo.svg" alt="Whaley Logo" className="h-12 w-auto object-contain" />
+          <img src="/figma/logo.svg" alt="Growhaley Logo" className="h-12 w-auto object-contain" />
         </div>
         <h2 className="text-2xl font-bold tracking-tight text-text-strong-950">
-          {isLogin ? "Welcome back" : "Create an account"}
+          Welcome back
         </h2>
         <p className="text-sm text-text-sub-600">
-          {isLogin ? "Please enter your details to sign in." : "Sign up to get started with Whaley."}
+          Please enter your details to sign in.
         </p>
       </div>
 
@@ -75,7 +70,7 @@ export function AuthForm({
               type={showPassword ? "text" : "password"}
               name="password"
               className="flex w-full h-10 px-3 py-2 pl-9 pr-10 bg-bg-white-0 border border-stroke-soft-200 rounded-[8px] text-sm text-text-strong-950 placeholder:text-text-disabled-300 focus:outline-none focus:ring-2 focus:ring-primary-base/20 focus:border-primary-base transition-colors"
-              placeholder={isLogin ? "Enter your password" : "Create a password"}
+              placeholder="Enter your password"
               required
             />
             <button
@@ -96,18 +91,16 @@ export function AuthForm({
               className="size-4 rounded border-stroke-soft-200 text-primary-base focus:ring-primary-base/20"
             />
             <span className="text-sm font-medium text-text-strong-950">
-              {isLogin ? "Remember me" : "I agree to terms"}
+              Remember me
             </span>
           </label>
-          {isLogin && (
-            <button
-              type="button"
-              onClick={onForgotPassword}
-              className="text-sm font-medium text-primary-base hover:text-primary-dark transition-colors"
-            >
-              Forgot password?
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onForgotPassword}
+            className="text-sm font-medium text-primary-base hover:text-primary-dark transition-colors"
+          >
+            Forgot password?
+          </button>
         </div>
 
         {/* Submit */}
@@ -118,50 +111,9 @@ export function AuthForm({
           className="mt-2 w-full"
           loading={loading}
         >
-          {isLogin ? "Sign In" : "Sign Up"}
+          Sign In
         </Button>
       </form>
-
-      {/* Divider */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-px bg-stroke-soft-200" />
-        <span className="text-xs font-medium text-text-sub-600 uppercase">Or continue with</span>
-        <div className="flex-1 h-px bg-stroke-soft-200" />
-      </div>
-
-      {/* Social Logins */}
-      <div className="flex flex-col gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          className="w-full"
-          onClick={() => onSocialLogin?.("google")}
-        >
-          <span className="font-bold">G</span> Google
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          className="w-full"
-          onClick={() => onSocialLogin?.("github")}
-        >
-          <span className="font-bold">Git</span> Github
-        </Button>
-      </div>
-      
-      {/* Footer */}
-      <div className="text-center text-sm text-text-sub-600 mt-2">
-        {isLogin ? "Don't have an account? " : "Already have an account? "}
-        <button
-          type="button"
-          onClick={onToggleType}
-          className="font-medium text-primary-base hover:text-primary-dark transition-colors cursor-pointer"
-        >
-          {isLogin ? "Sign up" : "Log in"}
-        </button>
-      </div>
     </div>
   );
 }
