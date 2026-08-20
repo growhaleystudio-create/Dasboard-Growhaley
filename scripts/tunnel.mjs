@@ -12,6 +12,10 @@ async function start() {
     console.log(`🚀 NGROK TUNNEL AKTIF: ${listener.url()}`);
     console.log(`======================================================\n`);
     console.log(`Silakan masukkan URL di atas ke Vercel NEXT_PUBLIC_API_URL\n`);
+
+    // Keep process running indefinitely
+    process.stdin.resume();
+    await new Promise(() => {});
   } catch (err) {
     console.error('Gagal menjalankan ngrok tunnel:', err);
   }
