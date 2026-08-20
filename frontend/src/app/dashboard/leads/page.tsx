@@ -447,7 +447,7 @@ export default function LeadsPage() {
   const teamId = sessionData?.session.teamId;
 
   // Query Leads
-  const { data: leadsData, isLoading: isLeadsLoading, isFetching: isLeadsFetching } = useQuery({
+  const { data: leadsData, isLoading: isLeadsLoading, isFetching: isLeadsFetching, error } = useQuery({
     queryKey: ['leads', teamId, debouncedSearch, statusFilter, ratingFilter, websiteFilter, aiStatusFilter, whatsappVerificationFilter, dateFrom, dateTo, page, pageSize],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -664,7 +664,7 @@ export default function LeadsPage() {
 
   const buildLeadParams = (exportAll = false) => {
     const params = new URLSearchParams();
-    if (search) params.append('search', search);
+    if (debouncedSearch) params.append('search', debouncedSearch);
     if (statusFilter !== 'All') params.append('status', statusFilter);
     if (ratingFilter !== 'All') params.append('rating', ratingFilter);
     if (websiteFilter !== 'All') params.append('website', websiteFilter);
