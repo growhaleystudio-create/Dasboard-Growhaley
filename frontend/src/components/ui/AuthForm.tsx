@@ -8,6 +8,7 @@ export interface AuthFormProps extends React.HTMLAttributes<HTMLDivElement> {
   onSubmit?: (e: React.FormEvent) => void;
   onForgotPassword?: () => void;
   onSocialLogin?: (provider: "google" | "github" | "apple") => void;
+  onToggleType?: () => void;
   loading?: boolean;
 }
 
@@ -16,6 +17,7 @@ export function AuthForm({
   onSubmit,
   onForgotPassword,
   onSocialLogin,
+  onToggleType,
   loading = false,
   className,
   ...props
@@ -152,7 +154,11 @@ export function AuthForm({
       {/* Footer */}
       <div className="text-center text-sm text-text-sub-600 mt-2">
         {isLogin ? "Don't have an account? " : "Already have an account? "}
-        <button className="font-medium text-primary-base hover:text-primary-dark transition-colors">
+        <button
+          type="button"
+          onClick={onToggleType}
+          className="font-medium text-primary-base hover:text-primary-dark transition-colors cursor-pointer"
+        >
           {isLogin ? "Sign up" : "Log in"}
         </button>
       </div>

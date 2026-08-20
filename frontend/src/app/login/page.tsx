@@ -139,6 +139,7 @@ export default function LoginPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [activeSlide, setActiveSlide] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
@@ -170,6 +171,20 @@ export default function LoginPage() {
     },
   });
 
+  const registerMutation = useMutation({
+    mutationFn: async (credentials: { email: string; password: string }) => {
+      return fetchApi<{ message: string; session: SessionResponse['session'] }>('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(credentials),
+      });
+    },
+    onSuccess: (data) => {
+      queryClient.clear();
+      queryClient.setQueryData<SessionResponse>(['session'], { session: data.session });
+      router.replace('/dashboard');
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -177,32 +192,43 @@ export default function LoginPage() {
     const password = formData.get('password') as string;
 
     if (email && password) {
-      loginMutation.mutate({ email, password });
+      if (mode === 'signup') {
+        registerMutation.mutate({ email, password });
+      } else {
+        loginMutation.mutate({ email, password });
+      }
     }
   };
 
+  const activeError = mode === 'signup' ? registerMutation.error : loginMutation.error;
+  const isPending = loginMutation.isPending || registerMutation.isPending;
   const slide = SHOWCASE_SLIDES[activeSlide] ?? SHOWCASE_SLIDES[0]!;
 
   return (
     <main className="min-h-screen bg-bg-white-0 p-4 lg:p-0">
       <div className="mx-auto flex min-h-[calc(100vh-32px)] w-full max-w-[1440px] overflow-hidden rounded-3xl bg-bg-white-0 lg:min-h-screen lg:rounded-none">
-        {/* Left Side: Login Form */}
+        {/* Left Side: Login/Signup Form */}
         <section className="relative flex min-w-0 w-full flex-col px-6 py-6 sm:px-10 lg:w-[42.25%] lg:px-11 justify-center">
           <div className="flex min-w-0 items-center justify-start py-12 lg:justify-center">
             <div className="min-w-0 w-[400px] max-w-[calc(100vw-64px)] lg:w-full lg:max-w-[400px] relative">
-              {loginMutation.error && (
+              {activeError && (
                 <div className="mb-5 rounded-lg border border-[#ffd5d8] bg-[#ffebec] p-3 absolute -top-16 left-0 right-0">
                   <Text variant="body-s-bold" className="text-[#cc0000]">
-                    {(loginMutation.error as AppError).message || 'Failed to login'}
+                    {(activeError as AppError).message || 'Authentication failed'}
                   </Text>
                 </div>
               )}
 
               <AuthForm
-                type="login"
+                type={mode}
                 onSubmit={handleSubmit as any}
+                onToggleType={() => {
+                  loginMutation.reset();
+                  registerMutation.reset();
+                  setMode((prev) => (prev === 'login' ? 'signup' : 'login'));
+                }}
                 className="w-full border-none shadow-none px-0"
-                loading={loginMutation.isPending}
+                loading={isPending}
               />
             </div>
           </div>

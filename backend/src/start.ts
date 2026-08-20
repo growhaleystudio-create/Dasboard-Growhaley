@@ -502,6 +502,7 @@ async function start() {
         authService,
         memberships: membershipsRepo,
         users: usersRepo,
+        dbPool,
       },
       teamRoutes: {
         teamService,
