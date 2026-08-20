@@ -166,7 +166,7 @@ export default function LoginPage() {
     onSuccess: (data) => {
       queryClient.clear();
       queryClient.setQueryData<SessionResponse>(['session'], { session: data.session });
-      router.replace('/dashboard');
+      window.location.href = '/dashboard';
     },
   });
 
