@@ -299,3 +299,80 @@ export class InMemorySessionStore implements SessionStore {
     this.sessions.delete(sessionId);
   }
 }
+
+/**
+ * PostgreSQL-backed session store that persists sessions across server restarts.
+ * This solves the critical issue where InMemorySessionStore loses all sessions
+ * when the dev server hot-reloads on file changes.
+ */
+export class PostgresSessionStore implements SessionStore {
+  private readonly pool: import('pg').Pool;
+  private readonly now: () => Date;
+
+  constructor(pool: import('pg').Pool, now: () => Date = () => new Date()) {
+    this.pool = pool;
+    this.now = now;
+  }
+
+  async create(
+    session: Omit<AuthSession, 'createdAt' | 'lastActivityAt'>,
+  ): Promise<{ sessionId: string; session: AuthSession }> {
+    const sessionId = generateSessionId();
+    const now = this.now();
+    const expiresAt = new Date(now.getTime() + SESSION_IDLE_TIMEOUT_SECONDS * 1000);
+    const fullSession: AuthSession = {
+      ...session,
+      createdAt: now,
+      lastActivityAt: now,
+    };
+    await this.pool.query(
+      `INSERT INTO session (id, user_id, team_id, role, created_at, last_activity_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (id) DO UPDATE SET last_activity_at = $6, expires_at = $7`,
+      [sessionId, session.userId, session.teamId, session.role, now, now, expiresAt],
+    );
+    return { sessionId, session: fullSession };
+  }
+
+  async get(sessionId: string): Promise<AuthSession | null> {
+    const result = await this.pool.query(
+      `SELECT user_id, team_id, role, created_at, last_activity_at, expires_at FROM session WHERE id = $1`,
+      [sessionId],
+    );
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    const now = this.now();
+    if (new Date(row.expires_at) <= now) {
+      await this.pool.query(`DELETE FROM session WHERE id = $1`, [sessionId]);
+      return null;
+    }
+    const session: AuthSession = {
+      userId: row.user_id,
+      teamId: row.team_id,
+      role: row.role,
+      createdAt: new Date(row.created_at),
+      lastActivityAt: new Date(row.last_activity_at),
+    };
+    if (isIdleExpired(session, now)) {
+      await this.pool.query(`DELETE FROM session WHERE id = $1`, [sessionId]);
+      return null;
+    }
+    return session;
+  }
+
+  async touch(sessionId: string): Promise<AuthSession | null> {
+    const existing = await this.get(sessionId);
+    if (!existing) return null;
+    const now = this.now();
+    const expiresAt = new Date(now.getTime() + SESSION_IDLE_TIMEOUT_SECONDS * 1000);
+    await this.pool.query(
+      `UPDATE session SET last_activity_at = $1, expires_at = $2 WHERE id = $3`,
+      [now, expiresAt, sessionId],
+    );
+    return { ...existing, lastActivityAt: now };
+  }
+
+  async destroy(sessionId: string): Promise<void> {
+    await this.pool.query(`DELETE FROM session WHERE id = $1`, [sessionId]);
+  }
+}

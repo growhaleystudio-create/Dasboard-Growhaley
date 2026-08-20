@@ -7,7 +7,7 @@ import { DbEffectiveRoleResolver } from './auth/effective-role.js';
 // Repositories
 import { AppUserRepository } from './auth/user-repository.js';
 import { MembershipRepository } from './auth/membership-repository.js';
-import { InMemorySessionStore, RedisSessionStore } from './auth/session-store.js';
+import { PostgresSessionStore, RedisSessionStore } from './auth/session-store.js';
 import { InvitationRepository } from './team/invitation-repository.js';
 import { LeadRepository } from './repository/lead-repository.js';
 import { LeadScoringBreakdownRepository } from './repository/lead-scoring-breakdown-repository.js';
@@ -117,7 +117,7 @@ async function start() {
   const vault = createCredentialVault(env);
   const usersRepo = new AppUserRepository(dbPool);
   const membershipsRepo = new MembershipRepository(dbPool);
-  const sessionStore = new InMemorySessionStore();
+  const sessionStore = new PostgresSessionStore(dbPool);
   const invitationsRepo = new InvitationRepository(dbPool);
 
   const leadsRepo = new LeadRepository(dbPool);
