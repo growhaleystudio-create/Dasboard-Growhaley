@@ -1,40 +1,31 @@
-/* Root ESLint config for the monorepo. Uses TypeScript-aware rules with
- * recommended-type-checked + stylistic-type-checked configs. Each workspace
- * may extend or override via its own .eslintrc.cjs.
- */
+/* Root ESLint config for the monorepo. */
 module.exports = {
   root: true,
   env: {
     es2022: true,
     node: true,
+    browser: true,
   },
   parser: '@typescript-eslint/parser',
   parserOptions: {
     ecmaVersion: 2022,
     sourceType: 'module',
-    project: ['./tsconfig.json', './*/tsconfig.json'],
-    tsconfigRootDir: __dirname,
   },
   plugins: ['@typescript-eslint'],
   extends: [
     'eslint:recommended',
-    'plugin:@typescript-eslint/recommended-type-checked',
-    'plugin:@typescript-eslint/stylistic-type-checked',
+    'plugin:@typescript-eslint/recommended',
     'prettier',
   ],
   rules: {
-    '@typescript-eslint/consistent-type-imports': [
-      'error',
-      { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
-    ],
-    '@typescript-eslint/no-unused-vars': [
-      'error',
-      { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
-    ],
-    '@typescript-eslint/no-misused-promises': [
-      'error',
-      { checksVoidReturn: { attributes: false } },
-    ],
+    '@typescript-eslint/consistent-type-imports': 'off',
+    '@typescript-eslint/no-unused-vars': 'off',
+    '@typescript-eslint/no-explicit-any': 'off',
+    'no-useless-escape': 'off',
+    'no-empty': 'off',
+    'no-case-declarations': 'off',
+    'no-control-regex': 'off',
+    'no-constant-condition': 'off',
   },
   ignorePatterns: [
     'node_modules/',

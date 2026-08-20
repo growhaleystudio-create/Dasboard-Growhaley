@@ -29,6 +29,11 @@ export {
 } from './ai-text-provider-client.js';
 
 export {
+  GeminiClient,
+  type GeminiResult,
+} from './gemini-client.js';
+
+export {
   AiAnalyzerService,
   type AiAnalyzeResult,
   type AiAnalyzerServiceDeps,

@@ -33,14 +33,14 @@ export function AuthForm({
     >
       {/* Header */}
       <div className="flex flex-col gap-2 items-center text-center">
-        <div className="size-12 bg-bg-weak-50 rounded-xl mb-2 flex items-center justify-center">
-          <span className="font-bold text-xl text-primary-base">V</span>
+        <div className="mb-2 flex items-center justify-center">
+          <img src="/figma/logo.svg" alt="Whaley Logo" className="h-12 w-auto object-contain" />
         </div>
         <h2 className="text-2xl font-bold tracking-tight text-text-strong-950">
           {isLogin ? "Welcome back" : "Create an account"}
         </h2>
         <p className="text-sm text-text-sub-600">
-          {isLogin ? "Please enter your details to sign in." : "Sign up to get started with VOIT."}
+          {isLogin ? "Please enter your details to sign in." : "Sign up to get started with Whaley."}
         </p>
       </div>
 

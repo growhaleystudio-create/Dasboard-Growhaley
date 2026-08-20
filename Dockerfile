@@ -6,6 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY shared/package*.json ./shared/
 COPY backend/package*.json ./backend/
+COPY frontend/package*.json ./frontend/
 
 # Instal semua dependensi
 RUN npm ci

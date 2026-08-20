@@ -1205,7 +1205,6 @@ export default function ContentGeneratorPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
           onClick={() => setZoomPng(null)}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={zoomPng}
             alt="Pratinjau slide"

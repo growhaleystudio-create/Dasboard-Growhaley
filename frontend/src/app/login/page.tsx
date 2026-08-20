@@ -43,18 +43,9 @@ export default function LoginPage() {
     <main className="min-h-screen bg-bg-white-0 p-4 lg:p-0">
       <div className="mx-auto flex min-h-[calc(100vh-32px)] w-full max-w-[1440px] overflow-hidden rounded-3xl bg-bg-white-0 lg:min-h-screen lg:rounded-none">
         
-        {/* Left Side: Login Form using VOIT DS */}
-        <section className="relative flex min-w-0 w-full flex-col px-6 py-6 sm:px-10 lg:w-[42.25%] lg:px-11">
-          <div className="flex items-center">
-            <div className="flex items-center gap-[8.139px]">
-              <img src="/figma/logo.svg" alt="" className="size-[50.871px] object-contain" />
-              <Text as="p" variant="body-m-bold" color="accent" className="leading-none">
-                Growhaley
-              </Text>
-            </div>
-          </div>
-
-          <div className="flex min-w-0 flex-1 items-center justify-start py-12 lg:justify-center">
+        {/* Left Side: Login Form */}
+        <section className="relative flex min-w-0 w-full flex-col px-6 py-6 sm:px-10 lg:w-[42.25%] lg:px-11 justify-center">
+          <div className="flex min-w-0 items-center justify-start py-12 lg:justify-center">
             <div className="min-w-0 w-[400px] max-w-[calc(100vw-64px)] lg:w-full lg:max-w-[400px] relative">
               {loginMutation.error && (
                 <div className="mb-5 rounded-lg border border-[#ffd5d8] bg-[#ffebec] p-3 absolute -top-16 left-0 right-0">
@@ -82,7 +73,7 @@ export default function LoginPage() {
             <div className="mb-4 flex items-center gap-2">
               <Search className="size-5 text-text-sub-600" strokeWidth={1.75} />
               <Text as="p" variant="body-m" className="flex-1 font-semibold text-text-strong-950">
-                Lead Signals
+                SEO Optimizer
               </Text>
               <Text
                 as="span"
@@ -94,10 +85,10 @@ export default function LoginPage() {
             </div>
 
             <div className="border-y border-stroke-soft-200 py-7">
-              <div className="mx-auto flex size-36 items-center justify-center rounded-full bg-[conic-gradient(#004CFF_0_72%,#ebebeb_72%_100%)]">
+              <div className="mx-auto flex size-36 items-center justify-center rounded-full bg-[conic-gradient(#004CFF_0_98%,#ebebeb_98%_100%)]">
                 <div className="flex size-28 flex-col items-center justify-center rounded-full bg-bg-white-0">
                   <Heading as="p" variant="h3" className="text-[32px] font-semibold leading-10 text-primary-base">
-                    72
+                    98
                   </Heading>
                   <Text as="p" variant="caption" color="secondary" className="font-semibold uppercase leading-4">
                     score
@@ -109,7 +100,7 @@ export default function LoginPage() {
             <div className="mt-4 flex flex-col gap-3">
               <div className="flex items-center gap-2 text-sm">
                 <CheckCircle2 className="size-5 text-[#1fc16b]" />
-                <span className="flex-1 text-text-strong-950 font-medium">12 qualified leads</span>
+                <span className="flex-1 text-text-strong-950 font-medium">12 SEO checks passed</span>
                 <span className="rounded-full bg-state-success-light px-2 py-0.5 text-xs font-medium text-state-success-dark">
                   Ready
                 </span>
@@ -117,15 +108,15 @@ export default function LoginPage() {
               <div className="h-px bg-stroke-soft-200" />
               <div className="flex items-center gap-2 text-sm">
                 <Search className="size-5 text-primary-base" />
-                <span className="flex-1 text-text-strong-950 font-medium">4 scans running</span>
+                <span className="flex-1 text-text-strong-950 font-medium">Readability: Excellent</span>
                 <span className="rounded-full bg-alpha-primary-10 px-2 py-0.5 text-xs font-medium text-primary-base">
                   Active
                 </span>
               </div>
               <div className="h-px bg-stroke-soft-200" />
               <div className="flex items-center gap-2 text-sm">
-                <XCircle className="size-5 text-text-soft-400" />
-                <span className="flex-1 text-text-strong-950 font-medium">2 duplicates removed</span>
+                <CheckCircle2 className="size-5 text-primary-base" />
+                <span className="flex-1 text-text-strong-950 font-medium">Featured image added</span>
                 <span className="rounded-full bg-bg-weak-50 px-2 py-0.5 text-xs font-medium text-text-sub-600">
                   Clean
                 </span>
@@ -135,10 +126,10 @@ export default function LoginPage() {
 
           <div className="absolute bottom-[112px] left-1/2 flex w-full max-w-[584px] -translate-x-1/2 flex-col items-center gap-2 px-8 text-center">
             <Heading as="h2" variant="title-1" className="font-semibold text-text-strong-950">
-              Stay on Top of Every Lead
+              Publish with SEO Confidence
             </Heading>
             <Text variant="body-m" color="secondary">
-              Track qualified prospects, scan activity, and lead quality from one focused workspace.
+              Whaley's built-in SEO analyzer ensures your posts are fully optimized for search engines before you hit publish.
             </Text>
           </div>
 

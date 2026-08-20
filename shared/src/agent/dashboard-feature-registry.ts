@@ -63,7 +63,7 @@ const DASHBOARD_FEATURE_REGISTRY: Record<AgentFeatureId, FeatureRegistryEntry> =
         note: 'Current implementation map and module overview for dashboard platform.',
       },
       {
-        path: 'docs/superpowers/specs/2026-06-26-voit-ds-dashboard-redesign-design.md',
+        path: 'docs/archive/superpowers/specs/2026-06-26-voit-ds-dashboard-redesign-design.md',
         kind: 'doc',
         note: 'Frontend redesign constraints and shell migration direction.',
       },
@@ -101,7 +101,7 @@ const DASHBOARD_FEATURE_REGISTRY: Record<AgentFeatureId, FeatureRegistryEntry> =
         path: 'frontend/src/app/dashboard/leads/page.tsx',
         kind: 'page',
         note: 'Primary leads management page with filters, table actions, modal detail, and export.',
-        semanticAnchors: ['LeadsPage', 'Acquired Leads', 'Lead Details', 'Run AI Scan'],
+        semanticAnchors: ['LeadsPage', 'Acquired Leads', 'Lead Details'],
         matchMode: 'all',
       },
       {
@@ -341,7 +341,7 @@ const DASHBOARD_FEATURE_REGISTRY: Record<AgentFeatureId, FeatureRegistryEntry> =
         note: 'Canonical content planner/validator/renderer design and job semantics.',
       },
       {
-        path: 'ANALISIS_CONTENT_GENERATOR.md',
+        path: 'docs/archive/root-notes/ANALISIS_CONTENT_GENERATOR.md',
         kind: 'doc',
         note: 'Implementation-vs-workflow analysis of current content generator behavior.',
       },

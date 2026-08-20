@@ -112,6 +112,7 @@ describe('ExampleGoogleSearchConnector', () => {
         publicContact: 'contact-design@example.com',
         profileUrl: 'https://example.com/design',
         location: 'Jakarta',
+        whatsappVerificationStatus: 'unchecked',
         sources: ['google'],
         matchedKeywords: ['design'],
         discoveredAt: new Date(0),
