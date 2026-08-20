@@ -417,7 +417,8 @@ export default function LeadsPage() {
   const queryClient = useQueryClient();
   const { data: sessionData, isLoading: isSessionLoading } = useSession();
   
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [ratingFilter, setRatingFilter] = useState('All');
   const [websiteFilter, setWebsiteFilter] = useState('All');
@@ -435,14 +436,22 @@ export default function LeadsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchInput);
+      setPage(0);
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [searchInput]);
+
   const teamId = sessionData?.session.teamId;
 
   // Query Leads
-  const { data: leadsData, isLoading: isLeadsLoading, error } = useQuery({
-    queryKey: ['leads', teamId, search, statusFilter, ratingFilter, websiteFilter, aiStatusFilter, whatsappVerificationFilter, dateFrom, dateTo, page, pageSize],
+  const { data: leadsData, isLoading: isLeadsLoading, isFetching: isLeadsFetching } = useQuery({
+    queryKey: ['leads', teamId, debouncedSearch, statusFilter, ratingFilter, websiteFilter, aiStatusFilter, whatsappVerificationFilter, dateFrom, dateTo, page, pageSize],
     queryFn: () => {
       const params = new URLSearchParams();
-      if (search) params.append('search', search);
+      if (debouncedSearch.trim()) params.append('search', debouncedSearch.trim());
       if (statusFilter !== 'All') params.append('status', statusFilter);
       if (ratingFilter !== 'All') params.append('rating', ratingFilter);
       if (websiteFilter !== 'All') params.append('website', websiteFilter);
@@ -455,6 +464,7 @@ export default function LeadsPage() {
       return fetchApi<PageResponse<LeadListItem>>(`/api/teams/${teamId}/leads?${params.toString()}`);
     },
     enabled: !!teamId,
+    placeholderData: (previousData) => previousData,
     refetchInterval: selectedLead?.aiState === 'pending' ? 2000 : false,
   });
 
@@ -593,7 +603,7 @@ export default function LeadsPage() {
     },
   });
 
-  if (isLeadsLoading) {
+  if (isLeadsLoading && !leadsData) {
     return (
       <div className="flex w-full flex-col gap-5 pb-12">
         <PageHeaderSkeleton />
@@ -880,13 +890,26 @@ export default function LeadsPage() {
             <div className="w-full sm:max-w-[320px]">
               <Input
                 placeholder="Search leads..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(0);
-                }}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 leftIcon={<Search size={16} />}
-                rightIcon={<span className="rounded border border-[#e2e4e9] bg-bg-weak-50 px-1.5 py-0.5 text-[10px] font-medium text-text-soft-400">⌘1</span>}
+                rightIcon={
+                  searchInput ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchInput('');
+                        setDebouncedSearch('');
+                        setPage(0);
+                      }}
+                      className="text-xs text-text-soft-400 hover:text-text-strong-950 font-medium px-1"
+                    >
+                      ✕
+                    </button>
+                  ) : (
+                    <span className="rounded border border-[#e2e4e9] bg-bg-weak-50 px-1.5 py-0.5 text-[10px] font-medium text-text-soft-400">⌘1</span>
+                  )
+                }
               />
             </div>
             <Select
@@ -905,7 +928,7 @@ export default function LeadsPage() {
           </div>
           <AlignLeadTable
             leads={tableLeads}
-            isLoading={isLeadsLoading}
+            isLoading={isLeadsLoading && !leadsData}
             error={error ? 'Failed to load leads' : undefined}
             onOpenLead={openLead}
             onOpenWhatsApp={(leadId) => {
