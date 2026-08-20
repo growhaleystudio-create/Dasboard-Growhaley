@@ -11,6 +11,10 @@ export interface LeadRoutesDeps {
   leadsRepo?: import('../../repository/lead-repository.js').LeadRepository;
 }
 
+const LeadStatusSchema = z.enum(['New', 'Reviewed', 'Contacted', 'Qualified', 'Converted', 'Rejected']);
+const AiStatusSchema = z.enum(['none', 'pending', 'success', 'unavailable']);
+const WhatsAppVerificationStatusSchema = z.enum(['unchecked', 'registered', 'not_registered']);
+
 const CreateLeadSchema = z.object({
   name: z.string().min(1),
   publicContact: z.string().optional(),
@@ -21,10 +25,6 @@ const CreateLeadSchema = z.object({
   status: LeadStatusSchema.default('New'),
   acquiredSource: z.string().default('manual'),
 });
-
-const LeadStatusSchema = z.enum(['New', 'Reviewed', 'Contacted', 'Qualified', 'Converted', 'Rejected']);
-const AiStatusSchema = z.enum(['none', 'pending', 'success', 'unavailable']);
-const WhatsAppVerificationStatusSchema = z.enum(['unchecked', 'registered', 'not_registered']);
 
 const QuerySchema = z.object({
   search: z.string().optional(),
@@ -117,31 +117,32 @@ export const leadRoutes = (deps: LeadRoutesDeps): FastifyPluginAsync => async (f
       throw new Error('leadsRepo not injected');
     }
 
-    const lead = await deps.leadsRepo.insert(params.id, {
+    const leadPayload: import('../../repository/lead-repository.js').LeadInsert = {
       teamId: params.id,
       name: input.name,
-      publicContact: input.publicContact || input.whatsappNumber || null,
-      profileUrl: input.profileUrl || null,
-      location: input.location || null,
-      whatsappUrl: whatsappUrl || null,
-      whatsappNumber: whatsappClean || null,
       whatsappVerificationStatus: 'registered',
       matchedKeywords: input.niche ? [input.niche] : ['General'],
       status: input.status,
       score: 88,
       scoreState: 'scored',
-      auditAttributes: null,
       isDuplicate: false,
-      duplicateOf: null,
       discoveredAt: now,
       acquiredSource: input.acquiredSource,
       acquiredAt: now,
       aiIntentScore: 88,
       aiInsight: 'Lead baru siap untuk dihubungi via WhatsApp.',
       aiState: 'success',
-      aiUnavailableReason: null,
       aiAnalyzedAt: now,
-    });
+    };
+    if (input.publicContact || input.whatsappNumber) {
+      leadPayload.publicContact = input.publicContact || input.whatsappNumber;
+    }
+    if (input.profileUrl) leadPayload.profileUrl = input.profileUrl;
+    if (input.location) leadPayload.location = input.location;
+    if (whatsappUrl) leadPayload.whatsappUrl = whatsappUrl;
+    if (whatsappClean) leadPayload.whatsappNumber = whatsappClean;
+
+    const lead = await deps.leadsRepo.insert(params.id, leadPayload);
 
     return reply.status(201).send(lead);
   });
