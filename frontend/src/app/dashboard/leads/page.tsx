@@ -439,7 +439,7 @@ export default function LeadsPage() {
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
   const [newLeadTab, setNewLeadTab] = useState<'scrape' | 'manual'>('scrape');
   const [scrapeForm, setScrapeForm] = useState({
-    source: 'google_maps',
+    source: 'google',
     keywords: '',
     location: '',
   });
@@ -1310,8 +1310,9 @@ export default function LeadsPage() {
                     value={scrapeForm.source}
                     onChange={(e) => setScrapeForm((prev) => ({ ...prev, source: e.target.value }))}
                     options={[
-                      { label: '📍 Google Maps (Direktori Bisnis & Kontak)', value: 'google_maps' },
-                      { label: '🌐 Google Search (Website & Bisnis Lokal)', value: 'google' },
+                      { label: '🌐 Google Search (Direktori Bisnis & Website)', value: 'google' },
+                      { label: '📍 Google Maps / Local Places (OSM Scraper)', value: 'google-scraper' },
+                      { label: '🗺️ Google Maps Headless Scraper', value: 'google_maps' },
                       { label: '📸 Instagram (Profil Bisnis & Kreator)', value: 'instagram' },
                       { label: '💼 LinkedIn (Perusahaan & Eksekutif)', value: 'linkedin' },
                     ]}

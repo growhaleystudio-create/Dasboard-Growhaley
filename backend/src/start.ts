@@ -146,6 +146,7 @@ async function start() {
     connectorRegistry.register(new ExampleGoogleSearchConnector());
   }
   connectorRegistry.register(new GoogleScraperConnector());
+  connectorRegistry.register(new GoogleMapsHeadlessConnector());
   connectorRegistry.register(new SocialApiConnector('threads', 'Threads'));
   connectorRegistry.register(new SocialApiConnector('linkedin', 'LinkedIn'));
   connectorRegistry.register(new SocialApiConnector('instagram', 'Instagram'));

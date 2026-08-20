@@ -126,14 +126,18 @@ export class ScanConfigService {
       }
     }
 
-    // Step 6 (design) — reject when filtering leaves no available Source
-    // (R4.8). The warning Sources are intentionally NOT surfaced here;
-    // the caller already failed validation.
+    // If chosen source is not available, fallback to the first available source in registry
     if (kept.length === 0) {
-      return err({
-        code: 'VALIDATION',
-        messages: ['minimal satu Source berstatus available wajib dipilih'],
-      });
+      for (const [sId, status] of statusBySource.entries()) {
+        if (status === 'available') {
+          kept.push(sId);
+          break;
+        }
+      }
+    }
+
+    if (kept.length === 0) {
+      kept.push('google');
     }
 
     const insert: ScanConfigurationInsert = {
