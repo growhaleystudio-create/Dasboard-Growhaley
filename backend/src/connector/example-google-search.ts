@@ -36,6 +36,7 @@ import type {
 } from '@leads-generator/shared';
 
 import { normalizeRawProspect } from './normalize.js';
+import { GoogleScraperConnector } from './google-scraper.js';
 import type { ScanQuery, Source_Connector } from './source-connector.js';
 
 /**
@@ -139,14 +140,26 @@ export class ExampleGoogleSearchConnector implements Source_Connector {
       throw new Error('aborted');
     }
 
+    if (query.location?.trim()) {
+      try {
+        const liveScraper = new GoogleScraperConnector();
+        const liveResults = await liveScraper.fetch(query, signal);
+        if (liveResults.length > 0) {
+          return liveResults;
+        }
+      } catch (err) {
+        if (signal.aborted) throw err;
+      }
+    }
+
     const limited = query.keywords.slice(0, MAX_SYNTHETIC_PROSPECTS);
     return limited.map((keyword) => ({
       name: `${keyword}-prospect`,
       publicContact: syntheticEmail(keyword),
       profileUrl: syntheticProfileUrl(keyword),
-      location: 'Jakarta',
+      location: query.location || 'Jakarta',
       matchedKeyword: keyword,
-      acquiredAt: SYNTHETIC_ACQUIRED_AT,
+      acquiredAt: new Date(),
     }));
   }
 

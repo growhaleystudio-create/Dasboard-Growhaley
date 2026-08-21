@@ -8,13 +8,13 @@ import { normalizeRawProspect } from './normalize.js';
 import type { ScanQuery, Source_Connector } from './source-connector.js';
 
 const MAX_RESULTS = 50;
-const REQUEST_TIMEOUT_MS = 12_000;
-const MAX_BBOX_SPAN = 0.25;
+const REQUEST_TIMEOUT_MS = 15_000;
+const MAX_BBOX_SPAN = 3.5;
 const DEBUG_OSM_SCRAPER = process.env.DEBUG_OSM_SCRAPER === '1';
 const OVERPASS_ENDPOINTS = [
-  'https://overpass.osm.ch/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
   'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.osm.ch/api/interpreter',
   'https://overpass.openstreetmap.ru/api/interpreter',
 ];
 const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
@@ -182,11 +182,11 @@ function buildOverpassQuery(query: ScanQuery, bbox: BoundingBox): string {
     : [`nwr${scope}["name"];`];
 
   return `
-    [out:json][timeout:12];
+    [out:json][timeout:15];
     (
       ${clauses.join('\n')}
     );
-    out tags center qt ${MAX_RESULTS};
+    out tags center ${MAX_RESULTS};
   `;
 }
 
@@ -237,7 +237,8 @@ async function geocodeLocation(location: string, signal: AbortSignal): Promise<B
   const url = new URL(NOMINATIM_ENDPOINT);
   url.searchParams.set('format', 'jsonv2');
   url.searchParams.set('limit', '1');
-  url.searchParams.set('q', location);
+  const queryStr = location.toLowerCase().includes('indonesia') ? location : `${location}, Indonesia`;
+  url.searchParams.set('q', queryStr);
 
   const response = await fetch(url, {
     headers: {
@@ -461,13 +462,7 @@ export class GoogleScraperConnector implements Source_Connector {
     }
 
     logDebug('fetch start', { location, keywords: query.keywords, niche: query.niche });
-    const nominatimProspects = await searchNominatimPois(query, signal);
-    if (nominatimProspects.length > 0) {
-      return nominatimProspects;
-    }
-
-    logDebug('nominatim returned no prospects, falling back to overpass');
-    let data: OverpassResponse;
+    let data: OverpassResponse | null = null;
     try {
       const bbox = await geocodeLocation(location, signal);
       const overpassQuery = buildOverpassQuery(query, bbox);
@@ -477,10 +472,8 @@ export class GoogleScraperConnector implements Source_Connector {
       if (signal.aborted) {
         throw error;
       }
-
       const message = error instanceof Error ? error.message : String(error);
-      logDebug('overpass fallback skipped after failure', { error: message });
-      return [];
+      logDebug('overpass attempt failed, will try nominatim fallback', { error: message });
     }
 
     const elements = Array.isArray(data.elements) ? data.elements : [];
@@ -531,8 +524,13 @@ export class GoogleScraperConnector implements Source_Connector {
       if (prospects.length >= MAX_RESULTS) break;
     }
 
-    logDebug('fetch complete', { prospects: prospects.length });
-    return prospects;
+    if (prospects.length > 0) {
+      logDebug('fetch complete from overpass', { prospects: prospects.length });
+      return prospects;
+    }
+
+    logDebug('overpass returned 0 prospects, falling back to nominatim');
+    return searchNominatimPois(query, signal);
   }
 
   public normalize(raw: RawProspect, teamId: string): NormalizedLead {
