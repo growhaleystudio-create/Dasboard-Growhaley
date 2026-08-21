@@ -11,8 +11,12 @@ function getPool() {
   if (!pool) {
     pool = new pg.Pool({
       connectionString: dbUrl,
+      ssl: {
+        rejectUnauthorized: false,
+      },
       max: 3,
       idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 5000,
     });
   }
   return pool;
@@ -32,13 +36,13 @@ export async function getActiveBackendUrl(): Promise<string> {
       lastFetched = now;
       return cachedUrl;
     }
-  } catch {
-    // fallback
+  } catch (err) {
+    console.warn('[tunnelResolver] Could not fetch tunnel URL from DB, using fallback:', err);
   }
 
   return (
     process.env.NEXT_PUBLIC_API_URL ||
     process.env.BACKEND_API_URL ||
-    'http://localhost:3000'
+    'https://petunia-emoticon-appease.ngrok-free.dev'
   ).replace(/\/+$/, '');
 }
