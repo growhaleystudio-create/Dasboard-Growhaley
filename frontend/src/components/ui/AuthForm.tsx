@@ -52,7 +52,7 @@ export function AuthForm({
             <input
               type="email"
               name="email"
-              defaultValue="growhaleystudio@gmail.com"
+              autoComplete="email"
               className="flex w-full h-10 px-3 py-2 pl-9 bg-bg-white-0 border border-stroke-soft-200 rounded-[8px] text-sm text-text-strong-950 placeholder:text-text-disabled-300 focus:outline-none focus:ring-2 focus:ring-primary-base/20 focus:border-primary-base transition-colors"
               placeholder="Enter your email"
               required
@@ -70,7 +70,7 @@ export function AuthForm({
             <input
               type={showPassword ? "text" : "password"}
               name="password"
-              defaultValue="Kosong@001122"
+              autoComplete="current-password"
               className="flex w-full h-10 px-3 py-2 pl-9 pr-10 bg-bg-white-0 border border-stroke-soft-200 rounded-[8px] text-sm text-text-strong-950 placeholder:text-text-disabled-300 focus:outline-none focus:ring-2 focus:ring-primary-base/20 focus:border-primary-base transition-colors"
               placeholder="Enter your password"
               required
