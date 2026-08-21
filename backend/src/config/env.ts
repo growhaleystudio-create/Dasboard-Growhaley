@@ -79,7 +79,7 @@ const EnvSchema = z
     /** PostgreSQL connection string used by the application and migrations. */
     DATABASE_URL: z.string().url(),
     /** Redis connection string used for sessions and BullMQ queues. */
-    REDIS_URL: z.string().url(),
+    REDIS_URL: z.string().url().default('redis://127.0.0.1:6379'),
     /** Standard Node.js environment flag. */
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     /** HTTP port for the API server. */

@@ -14,10 +14,9 @@ export function providerKindFromBaseUrl(baseUrl: string): ProviderAdapterKind {
   }
 }
 
-export function requireProviderBaseUrl(baseUrl: string): string {
-  const normalized = normalizeProviderBaseUrl(baseUrl);
-  if (normalized.length === 0) {
-    throw new Error('provider_base_url_missing');
+export function requireProviderBaseUrl(baseUrl?: string | null): string {
+  if (!baseUrl || baseUrl.trim().length === 0) {
+    return 'https://generativelanguage.googleapis.com';
   }
-  return normalized;
+  return normalizeProviderBaseUrl(baseUrl);
 }

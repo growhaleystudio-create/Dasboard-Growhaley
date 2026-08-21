@@ -107,7 +107,7 @@ async function start() {
   // Redis connections
   const useRedisQueue = env.NODE_ENV !== 'development';
   const redisQueueClient = useRedisQueue ? createRedisClient(env.REDIS_URL) : null;
-  const redisSessionClient = env.REDIS_URL ? createRedisSessionClient(env.REDIS_URL) : null;
+  const redisSessionClient = null;
   if (!redisQueueClient) {
     console.warn(
       '⚠️  Development mode: Redis queues are disabled; content jobs use the in-process fallback runner.',
@@ -203,8 +203,12 @@ async function start() {
   const aiQueue = redisQueueClient
     ? new Queue<AiAnalysisJobData>(AI_ANALYSIS_QUEUE_NAME, { connection: redisQueueClient })
     : ({
-        add: async () => {
-          throw new Error('ai_queue_unavailable_in_development');
+        add: async (_name: string, data: AiAnalysisJobData) => {
+          setTimeout(() => {
+            aiAnalyzer
+              .analyzeLead(data.teamId, data.leadId, data.trigger, data.actorId ?? 'system')
+              .catch((err) => console.error('[ai-analyzer-in-process] error:', err));
+          }, 0);
         },
       } as unknown as Queue<AiAnalysisJobData>);
   const aiReanalyze = new AiReanalyzeService({

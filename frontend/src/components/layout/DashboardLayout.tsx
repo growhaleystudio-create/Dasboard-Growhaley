@@ -10,6 +10,9 @@ import {
   ClipboardList,
   LayoutDashboard,
   LogOut,
+  PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
   ScanLine,
   Search,
   Settings,
@@ -28,6 +31,8 @@ import { Surface } from '@/components/ui/Surface';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { Heading, Text } from '@/components/ui/Typography';
 import { cn } from '@/lib/utils';
+import { TopNav } from '@/components/ui/TopNav';
+import { SearchField } from '@/components/ui/SearchField';
 
 const desktopNavGroups: Array<{
   title?: string;
@@ -76,21 +81,8 @@ function matchesPath(pathname: string | null, href: string) {
 
 function BrandMark() {
   return (
-    <div className="relative size-[40px] shrink-0 overflow-hidden">
+    <div className="relative size-[38px] shrink-0 overflow-hidden">
       <img src="/figma/logo.svg" alt="Growhaley" className="size-full object-contain" />
-    </div>
-  );
-}
-
-function BrandLockup({ compact = false }: { compact?: boolean }) {
-  return (
-    <div className="flex items-center gap-[8.139px]">
-      <BrandMark />
-      {!compact ? (
-        <Text as="p" variant="title-3-bold" color="accent" className="leading-none">
-          Growhaley
-        </Text>
-      ) : null}
     </div>
   );
 }
@@ -100,47 +92,124 @@ function SidebarLink({
   label,
   icon: Icon,
   active,
+  collapsed,
 }: {
   href: string;
   label: string;
   icon: LucideIcon;
   active: boolean;
+  collapsed: boolean;
 }) {
   return (
     <Link
       href={href}
+      title={collapsed ? label : undefined}
       className={cn(
-        'group relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium leading-5 transition-all duration-150 ease-out hover:translate-x-0.5 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-base/20',
-        active ? 'bg-bg-weak-50 text-text-strong-950' : 'bg-transparent text-text-sub-600 hover:bg-bg-weak-50'
+        'group relative flex items-center rounded-lg text-sm font-medium leading-5 transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-base/20',
+        collapsed ? 'h-10 w-full justify-center px-0' : 'gap-2 px-3 py-2 hover:translate-x-0.5',
+        active
+          ? 'bg-bg-weak-50 text-text-strong-950 font-semibold shadow-xs'
+          : 'bg-transparent text-text-sub-600 hover:bg-bg-weak-50 hover:text-text-strong-950'
       )}
     >
-      {active ? <span className="absolute -left-5 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-[4px] bg-primary-accent" /> : null}
+      {active && !collapsed ? (
+        <span className="absolute -left-5 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-[4px] bg-primary-accent" />
+      ) : null}
+      {active && collapsed ? (
+        <span className="absolute -left-2.5 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-[4px] bg-primary-accent" />
+      ) : null}
+      
       <Icon
         size={20}
-        strokeWidth={1.75}
-        className={cn('transition-colors', active ? 'text-primary-accent' : 'text-text-sub-600 group-hover:text-primary-accent')}
+        strokeWidth={active ? 2 : 1.75}
+        className={cn(
+          'shrink-0 transition-colors',
+          active ? 'text-primary-accent' : 'text-text-sub-600 group-hover:text-primary-accent'
+        )}
       />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {active ? <ChevronRight size={20} strokeWidth={1.75} className="text-text-sub-600 transition-transform group-hover:translate-x-0.5" /> : null}
+
+      {!collapsed ? (
+        <>
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {active ? (
+            <ChevronRight
+              size={18}
+              strokeWidth={1.75}
+              className="text-text-sub-600 transition-transform group-hover:translate-x-0.5 shrink-0"
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {/* Floating Tooltip in Collapsed Mode */}
+      {collapsed ? (
+        <div className="pointer-events-none absolute left-full ml-3 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white shadow-xl group-hover:block z-50 animate-in fade-in-50 duration-150">
+          {label}
+        </div>
+      ) : null}
     </Link>
   );
 }
 
-function DashboardSidebar({ pathname }: { pathname: string | null }) {
+function DashboardSidebar({
+  pathname,
+  isCollapsed,
+  onToggleCollapse,
+}: {
+  pathname: string | null;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+}) {
   return (
-    <aside className="sticky top-0 hidden h-screen w-[220px] shrink-0 flex-col bg-transparent px-5 pb-6 pt-6 xl:flex">
-      <div className="pb-12">
-        <BrandLockup />
+    <aside
+      className={cn(
+        'sticky top-0 hidden h-screen shrink-0 flex-col bg-transparent pb-6 pt-6 transition-all duration-300 ease-in-out xl:flex',
+        isCollapsed ? 'w-[74px] px-2.5' : 'w-[230px] px-5'
+      )}
+    >
+      {/* Top Brand & Toggle Header */}
+      <div
+        className={cn(
+          'flex items-center pb-8 transition-all',
+          isCollapsed ? 'flex-col gap-3 justify-center' : 'justify-between'
+        )}
+      >
+        <Link href="/dashboard" className="flex items-center gap-[8.139px] min-w-0">
+          <BrandMark />
+          {!isCollapsed ? (
+            <Text as="p" variant="title-3-bold" color="accent" className="leading-none truncate">
+              Growhaley
+            </Text>
+          ) : null}
+        </Link>
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          title={isCollapsed ? 'Buka Sidebar (Ctrl+B)' : 'Sembunyikan Sidebar (Ctrl+B)'}
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-text-sub-600 transition-colors hover:bg-bg-weak-50 hover:text-text-strong-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-base/20"
+        >
+          {isCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+        </button>
       </div>
 
+      {/* Navigation list */}
       <div className="flex min-h-0 flex-1 flex-col">
-        <nav className="flex flex-1 flex-col gap-6 overflow-y-auto pr-3">
+        <nav className={cn('flex flex-1 flex-col gap-5 overflow-y-auto', !isCollapsed && 'pr-2')}>
           {desktopNavGroups.map((group, index) => (
-            <div key={group.title ?? `group-${index}`} className="flex flex-col gap-2">
+            <div key={group.title ?? `group-${index}`} className="flex flex-col gap-1.5">
               {group.title ? (
-                <Text as="p" variant="caption-bold" color="tertiary" className="px-1 uppercase tracking-[0.48px]">
-                  {group.title}
-                </Text>
+                !isCollapsed ? (
+                  <Text
+                    as="p"
+                    variant="caption-bold"
+                    color="tertiary"
+                    className="px-1 uppercase tracking-[0.48px] text-[11px]"
+                  >
+                    {group.title}
+                  </Text>
+                ) : (
+                  <div className="mx-auto my-1.5 h-px w-5 bg-stroke-soft-200/80" title={group.title} />
+                )
               ) : null}
               <div className="flex flex-col gap-1">
                 {group.items.map((item) => (
@@ -150,20 +219,17 @@ function DashboardSidebar({ pathname }: { pathname: string | null }) {
                     label={item.label}
                     icon={item.icon}
                     active={matchesPath(pathname, item.href)}
+                    collapsed={isCollapsed}
                   />
                 ))}
               </div>
             </div>
           ))}
         </nav>
-
       </div>
     </aside>
   );
 }
-
-import { TopNav } from '@/components/ui/TopNav';
-import { SearchField } from '@/components/ui/SearchField';
 
 function DashboardTopbar({
   profile,
@@ -172,6 +238,8 @@ function DashboardTopbar({
   onLogout,
   isLoggingOut,
   pathname,
+  isCollapsed,
+  onToggleCollapse,
 }: {
   profile: ReturnType<typeof getSessionProfile>;
   isProfileMenuOpen: boolean;
@@ -179,15 +247,20 @@ function DashboardTopbar({
   onLogout: () => void;
   isLoggingOut: boolean;
   pathname: string | null;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }) {
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchValue, setSearchValue] = React.useState('');
 
   const breadcrumbItems = pathname
-    ? pathname.split('/').filter(Boolean).map((part, index, arr) => ({
-        label: part.charAt(0).toUpperCase() + part.slice(1),
-        href: '/' + arr.slice(0, index + 1).join('/'),
-      }))
+    ? pathname
+        .split('/')
+        .filter(Boolean)
+        .map((part, index, arr) => ({
+          label: part.charAt(0).toUpperCase() + part.slice(1),
+          href: '/' + arr.slice(0, index + 1).join('/'),
+        }))
     : [{ label: 'Dashboard' }];
 
   return (
@@ -196,7 +269,16 @@ function DashboardTopbar({
       blurBackground={false}
       glass={false}
       logo={
-        <div className="hidden md:flex items-center gap-4">
+        <div className="hidden md:flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleCollapse}
+            title={isCollapsed ? 'Buka Sidebar (Ctrl+B)' : 'Sembunyikan Sidebar (Ctrl+B)'}
+            className="hidden xl:flex size-10 rounded-ui border border-stroke-soft-200 bg-bg-white-0 text-text-sub-600 shadow-none hover:bg-bg-weak-50 hover:text-text-strong-950 transition-colors"
+          >
+            <PanelLeft size={18} />
+          </Button>
           <Breadcrumb items={breadcrumbItems} />
         </div>
       }
@@ -204,12 +286,12 @@ function DashboardTopbar({
       alignment="Right"
       actionSlot={
         <div className="flex items-center gap-3">
-          <SearchField 
-            open={searchOpen} 
+          <SearchField
+            open={searchOpen}
             onOpenChange={setSearchOpen}
             value={searchValue}
             onValueChange={setSearchValue}
-            className="hidden md:flex" 
+            className="hidden md:flex"
             placeholder="Search leads..."
           />
           <Button
@@ -282,13 +364,20 @@ function DashboardTopbar({
   );
 }
 
-function MobileTopbar({ profile, pathname }: { profile: ReturnType<typeof getSessionProfile>; pathname: string | null }) {
-  const activeLabel = mobileNavItems.find((item) => matchesPath(pathname, item.href))?.label ?? 'Dashboard';
+function MobileTopbar({
+  profile,
+  pathname,
+}: {
+  profile: ReturnType<typeof getSessionProfile>;
+  pathname: string | null;
+}) {
+  const activeLabel =
+    mobileNavItems.find((item) => matchesPath(pathname, item.href))?.label ?? 'Dashboard';
 
   return (
     <div className="sticky top-0 z-20 border-b border-stroke-soft-200 bg-bg-subtle/95 px-4 py-4 backdrop-blur xl:hidden">
       <div className="flex items-center gap-3">
-        <BrandLockup compact />
+        <BrandMark />
         <div className="min-w-0 flex-1">
           <Text as="p" variant="body-s-bold" color="accent" className="truncate">
             Growhaley
@@ -298,12 +387,12 @@ function MobileTopbar({ profile, pathname }: { profile: ReturnType<typeof getSes
           </Text>
         </div>
         <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Notifications"
-            className="size-10 rounded-ui border border-stroke-soft-200 bg-bg-white-0 text-text-sub-600 shadow-none"
-          >
-            <Bell size={18} />
+          variant="ghost"
+          size="icon"
+          aria-label="Notifications"
+          className="size-10 rounded-ui border border-stroke-soft-200 bg-bg-white-0 text-text-sub-600 shadow-none"
+        >
+          <Bell size={18} />
         </Button>
       </div>
     </div>
@@ -324,11 +413,15 @@ function MobileBottomNav({ pathname }: { pathname: string | null }) {
               href={item.href}
               className={cn(
                 'flex min-w-0 flex-col items-center gap-1 rounded-lg px-2 py-2 text-center transition-all duration-150 ease-out active:scale-[0.94]',
-                active ? 'bg-bg-weak-50 text-primary-accent' : 'text-text-sub-600 hover:bg-bg-weak-50 hover:text-primary-accent'
+                active
+                  ? 'bg-bg-weak-50 text-primary-accent'
+                  : 'text-text-sub-600 hover:bg-bg-weak-50 hover:text-primary-accent'
               )}
             >
               <Icon size={18} strokeWidth={1.8} />
-              <span className="truncate font-sans text-[11px] font-medium leading-none">{item.label}</span>
+              <span className="truncate font-sans text-[11px] font-medium leading-none">
+                {item.label}
+              </span>
             </Link>
           );
         })}
@@ -349,6 +442,45 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   } = useSession();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = React.useState(false);
   const [isAuthRedirecting, setIsAuthRedirecting] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(false);
+
+  // Synchronize collapsed state with localStorage
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem('growhaley_sidebar_collapsed');
+      if (saved !== null) {
+        setIsCollapsed(saved === 'true');
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, []);
+
+  const handleToggleCollapse = React.useCallback(() => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('growhaley_sidebar_collapsed', String(next));
+      } catch {
+        // Ignore localStorage errors
+      }
+      return next;
+    });
+  }, []);
+
+  // Keyboard shortcut Ctrl+B / Cmd+B to toggle sidebar
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+        e.preventDefault();
+        handleToggleCollapse();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleToggleCollapse]);
+
   const profile = getSessionProfile(sessionData?.session);
   const logoutMutation = useMutation({
     mutationFn: () => fetchApi<{ message: string }>('/api/auth/logout', { method: 'POST' }),
@@ -393,10 +525,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           'radial-gradient(circle at 85% 115%, rgba(223, 186, 242, 0.9), rgba(245, 242, 243, 0.96) 28%, rgba(245, 242, 243, 1) 60%)',
       }}
     >
-      <div className="mx-auto flex min-h-dvh w-full max-w-[1512px]">
-        <DashboardSidebar pathname={pathname} />
+      <div className="mx-auto flex min-h-dvh w-full max-w-[1720px] 2xl:max-w-none 2xl:px-8 transition-all duration-300">
+        <DashboardSidebar
+          pathname={pathname}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={handleToggleCollapse}
+        />
 
-        <div className="flex min-w-0 flex-1 flex-col pb-24 xl:pb-0">
+        <div className="flex min-w-0 flex-1 flex-col pb-24 xl:pb-0 transition-all duration-300">
           <MobileTopbar profile={profile} pathname={pathname} />
           <div className="min-w-0 flex-1">
             <DashboardTopbar
@@ -406,6 +542,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               onLogout={() => logoutMutation.mutate()}
               isLoggingOut={logoutMutation.isPending}
               pathname={pathname}
+              isCollapsed={isCollapsed}
+              onToggleCollapse={handleToggleCollapse}
             />
 
             <main className="px-4 pb-6 pt-4 sm:px-6 xl:px-0 xl:pb-5 xl:pl-0 xl:pr-6 xl:pt-4">

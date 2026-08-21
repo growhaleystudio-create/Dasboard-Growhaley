@@ -38,6 +38,6 @@ describe('deterministicLeadScore', () => {
   });
 
   it('falls back to the legacy score when there is no breakdown', () => {
-    expect(deterministicLeadScore({ score: 40, scoringBreakdown: undefined })).toBe(40);
+    expect(deterministicLeadScore({ score: 40 })).toBe(40);
   });
 });

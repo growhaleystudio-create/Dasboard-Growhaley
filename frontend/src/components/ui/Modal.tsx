@@ -6,12 +6,13 @@ export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
+  description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'drawer';
 }
 
-export function Modal({ isOpen, onClose, title, children, footer, size = 'md' }: ModalProps) {
+export function Modal({ isOpen, onClose, title, description, children, footer, size = 'md' }: ModalProps) {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -39,34 +40,34 @@ export function Modal({ isOpen, onClose, title, children, footer, size = 'md' }:
           : "items-end justify-center sm:items-center sm:p-4"
       )}
     >
-      {/* Overlay */}
       <div 
-        className="absolute inset-0 bg-text-strong-950/20 backdrop-blur-sm transition-opacity" 
-        onClick={onClose}
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity" 
+        onClick={onClose} 
       />
-      
-      {/* Modal Card / Drawer Sheet */}
       <div
         className={cn(
-          "relative flex flex-col overflow-hidden bg-bg-white-0 shadow-panel transition-all",
+          "relative flex flex-col bg-bg-white-0 text-text-strong-950 shadow-2xl transition-all",
           isDrawer
-            ? "h-full max-h-screen w-full max-w-lg sm:max-w-xl rounded-none sm:rounded-l-panel animate-in fade-in slide-in-from-right duration-300"
-            : cn(
-                "max-h-[92dvh] w-full rounded-panel animate-in fade-in zoom-in-95 duration-200",
-                size === 'sm' && "max-w-sm",
-                size === 'md' && "max-w-lg",
-                size === 'lg' && "max-w-2xl",
-                size === 'xl' && "max-w-4xl",
-                size === 'full' && "max-w-full m-3 sm:m-4"
-              )
+            ? "h-full w-full max-w-xl rounded-l-[28px] border-l border-stroke-soft-200"
+            : "w-full rounded-[24px] border border-stroke-soft-200 max-h-[90vh]",
+          !isDrawer && size === 'sm' && "max-w-md",
+          !isDrawer && size === 'md' && "max-w-lg",
+          !isDrawer && size === 'lg' && "max-w-2xl",
+          !isDrawer && size === 'xl' && "max-w-4xl",
+          !isDrawer && size === 'full' && "max-w-[95vw] h-[95vh]"
         )}
       >
-        
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-stroke-soft-200 px-4 py-4 sm:px-6">
-          <h2 className="font-sans text-[18px] font-bold leading-[1.3] tracking-[-0.01em] text-text-strong-950">
-            {title}
-          </h2>
+        <div className="flex items-center justify-between border-b border-stroke-soft-200 px-6 py-4">
+          <div>
+            <h3 className="font-heading text-lg font-semibold leading-6 text-text-strong-950">
+              {title}
+            </h3>
+            {description ? (
+              <p className="mt-0.5 text-xs text-text-sub-600">
+                {description}
+              </p>
+            ) : null}
+          </div>
           <button 
             onClick={onClose}
             className="text-text-soft-400 hover:text-text-strong-950 transition-colors p-1"
