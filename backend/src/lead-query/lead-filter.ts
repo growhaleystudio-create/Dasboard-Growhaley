@@ -192,8 +192,9 @@ export function matchesFilter(lead: Lead, f: LeadFilter): boolean {
   // --- R9.2: case-insensitive substring search. -------------------------
   if (f.search !== undefined) {
     const needle = f.search.trim().toLowerCase();
+    const keywordsStr = Array.isArray(lead.matchedKeywords) ? lead.matchedKeywords.join(' ') : '';
     const haystack =
-      `${lead.name ?? ''} ${lead.publicContact ?? ''} ${lead.location ?? ''}`.toLowerCase();
+      `${lead.name ?? ''} ${lead.publicContact ?? ''} ${lead.whatsappNumber ?? ''} ${lead.location ?? ''} ${keywordsStr} ${lead.acquiredSource ?? ''}`.toLowerCase();
     if (!haystack.includes(needle)) return false;
   }
 

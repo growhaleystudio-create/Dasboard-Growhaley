@@ -476,7 +476,7 @@ export class GoogleScraperConnector implements Source_Connector {
       logDebug('overpass attempt failed, will try nominatim fallback', { error: message });
     }
 
-    const elements = Array.isArray(data.elements) ? data.elements : [];
+    const elements = (data && Array.isArray(data.elements)) ? data.elements : [];
     logDebug('elements received', { count: elements.length });
     const seen = new Set<string>();
     const prospects: RawProspect[] = [];

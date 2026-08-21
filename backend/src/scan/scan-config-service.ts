@@ -30,7 +30,7 @@ import type {
   ScanConfigurationRepository,
 } from '../repository/scan-configuration-repository.js';
 
-import { validateScanConfig, type RawScanConfigInput } from './scan-config-validation.js';
+import { validateScanConfig, VALIDATION_MESSAGES, type RawScanConfigInput } from './scan-config-validation.js';
 
 /**
  * Status assigned to a requested Source whose connector is not installed
@@ -126,18 +126,11 @@ export class ScanConfigService {
       }
     }
 
-    // If chosen source is not available, fallback to the first available source in registry
     if (kept.length === 0) {
-      for (const [sId, status] of statusBySource.entries()) {
-        if (status === 'available') {
-          kept.push(sId);
-          break;
-        }
-      }
-    }
-
-    if (kept.length === 0) {
-      kept.push('google');
+      return err({
+        code: 'VALIDATION',
+        messages: ['minimal satu Source berstatus available wajib dipilih'],
+      });
     }
 
     const insert: ScanConfigurationInsert = {

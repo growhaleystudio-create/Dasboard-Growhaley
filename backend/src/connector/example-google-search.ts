@@ -159,7 +159,7 @@ export class ExampleGoogleSearchConnector implements Source_Connector {
       profileUrl: syntheticProfileUrl(keyword),
       location: query.location || 'Jakarta',
       matchedKeyword: keyword,
-      acquiredAt: new Date(),
+      acquiredAt: SYNTHETIC_ACQUIRED_AT,
     }));
   }
 

@@ -134,8 +134,9 @@ export const leadRoutes = (deps: LeadRoutesDeps): FastifyPluginAsync => async (f
       aiState: 'success',
       aiAnalyzedAt: now,
     };
-    if (input.publicContact || input.whatsappNumber) {
-      leadPayload.publicContact = input.publicContact || input.whatsappNumber;
+    const publicContactVal = input.publicContact || input.whatsappNumber;
+    if (publicContactVal) {
+      leadPayload.publicContact = publicContactVal;
     }
     if (input.profileUrl) leadPayload.profileUrl = input.profileUrl;
     if (input.location) leadPayload.location = input.location;
