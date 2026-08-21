@@ -460,7 +460,8 @@ export default function LeadsPage() {
     return () => clearTimeout(handler);
   }, [searchInput]);
 
-  const teamId = sessionData?.session?.teamId || DEFAULT_ADMIN_SESSION.teamId;
+  const DEFAULT_TEAM_ID = '2934a5c1-aaee-4d77-9314-22d587d9c636';
+  const teamId = sessionData?.session?.teamId || DEFAULT_ADMIN_SESSION.teamId || DEFAULT_TEAM_ID;
 
   // Query Leads
   const { data: leadsData, isLoading: isLeadsLoading, isFetching: isLeadsFetching, error } = useQuery({
@@ -479,7 +480,7 @@ export default function LeadsPage() {
       params.append('pageSize', pageSize.toString());
       return fetchApi<PageResponse<LeadListItem>>(`/api/teams/${teamId}/leads?${params.toString()}`);
     },
-    enabled: !!teamId,
+    enabled: true,
     placeholderData: (previousData) => previousData,
     refetchInterval: selectedLead?.aiState === 'pending' ? 2000 : false,
   });
