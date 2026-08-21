@@ -716,21 +716,24 @@ export default function LeadsPage() {
 
   const tableLeads: AlignLead[] = (leadsData?.items ?? []).map((lead) => {
     const whatsappNumber = typeof lead.whatsappNumber === 'string' ? lead.whatsappNumber : null;
+    const matchedKeywords = Array.isArray(lead.matchedKeywords)
+      ? lead.matchedKeywords.join(', ')
+      : (typeof lead.matchedKeywords === 'string' ? lead.matchedKeywords : '');
 
     return {
       id: lead.id,
       name: lead.name ?? 'Unknown',
-      contact: lead.publicContact ?? 'No contact',
+      contact: lead.publicContact ?? lead.whatsappNumber ?? 'No contact',
       whatsappUrl: whatsappTargetFor(lead),
       whatsappNumber,
-      whatsappVerificationStatus: lead.whatsappVerificationStatus,
+      whatsappVerificationStatus: lead.whatsappVerificationStatus || 'unchecked',
       location: lead.location ?? 'Unknown location',
-      niche: lead.matchedKeywords.join(', ') || 'General',
+      niche: matchedKeywords || 'General',
       dateFound: formatDate(lead.discoveredAt ?? lead.createdAt),
       sourceLabel: sourceLabelFor(lead),
       sourceUrl: sourceUrlFor(lead),
       websiteStatus: websiteStatusFor(lead),
-      status: lead.status,
+      status: lead.status || 'New',
       score: deterministicLeadScore(lead),
     };
   });
