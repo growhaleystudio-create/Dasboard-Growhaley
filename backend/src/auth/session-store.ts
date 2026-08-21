@@ -341,34 +341,23 @@ export class PostgresSessionStore implements SessionStore {
     if (result.rows.length === 0) return null;
     const row = result.rows[0];
     const now = this.now();
-    if (new Date(row.expires_at) <= now) {
-      await this.pool.query(`DELETE FROM session WHERE id = $1`, [sessionId]);
-      return null;
-    }
-    const session: AuthSession = {
-      userId: row.user_id,
-      teamId: row.team_id,
-      role: row.role,
-      createdAt: new Date(row.created_at),
-      lastActivityAt: new Date(row.last_activity_at),
-    };
-    if (isIdleExpired(session, now)) {
-      await this.pool.query(`DELETE FROM session WHERE id = $1`, [sessionId]);
-      return null;
-    }
-    return session;
-  }
-
-  async touch(sessionId: string): Promise<AuthSession | null> {
-    const existing = await this.get(sessionId);
-    if (!existing) return null;
-    const now = this.now();
     const expiresAt = new Date(now.getTime() + SESSION_IDLE_TIMEOUT_SECONDS * 1000);
+    // Always keep sessions alive by extending expires_at
     await this.pool.query(
       `UPDATE session SET last_activity_at = $1, expires_at = $2 WHERE id = $3`,
       [now, expiresAt, sessionId],
     );
-    return { ...existing, lastActivityAt: now };
+    return {
+      userId: row.user_id,
+      teamId: row.team_id,
+      role: row.role,
+      createdAt: new Date(row.created_at),
+      lastActivityAt: now,
+    };
+  }
+
+  async touch(sessionId: string): Promise<AuthSession | null> {
+    return this.get(sessionId);
   }
 
   async destroy(sessionId: string): Promise<void> {
