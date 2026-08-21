@@ -664,9 +664,26 @@ export default function LeadsPage() {
       });
     },
     onSuccess: (data: any) => {
-      const count = data?.newLeads ?? 0;
-      toast.success(`Scraping selesai! ${count} prospek baru berhasil dimasukkan ke tabel.`);
+      const newCount = data?.newLeads ?? 0;
+      const dupCount = data?.duplicateLeads ?? 0;
+      if (newCount > 0) {
+        toast.success(`Scraping berhasil! ${newCount} prospek baru berhasil dimasukkan ke tabel.`);
+      } else if (dupCount > 0) {
+        toast.success(`Scraping selesai! Ditemukan ${dupCount} prospek (sudah tersimpan di database).`);
+      } else {
+        toast.info('Scraping selesai.');
+      }
       setIsNewLeadModalOpen(false);
+      setSearchInput('');
+      setDebouncedSearch('');
+      setStatusFilter('All');
+      setRatingFilter('All');
+      setWebsiteFilter('All');
+      setAiStatusFilter('All');
+      setWhatsappVerificationFilter('All');
+      setDateFrom('');
+      setDateTo('');
+      setPage(0);
       setScrapeForm({ source: 'google', keywords: '', location: '' });
       void queryClient.invalidateQueries({ queryKey: ['leads'] });
       void queryClient.refetchQueries({ queryKey: ['leads'] });
