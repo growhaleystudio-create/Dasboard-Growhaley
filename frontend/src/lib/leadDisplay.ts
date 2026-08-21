@@ -27,20 +27,22 @@ export function socialSourceFromUrl(value: string | null | undefined) {
   return null;
 }
 
-export function sourceLabelFor(lead: Pick<LeadListItem, 'acquiredSource' | 'profileUrl'>) {
+export function sourceLabelFor(lead: Pick<LeadListItem, 'acquiredSource' | 'profileUrl'> | null | undefined) {
+  if (!lead) return '-';
   const socialSource = socialSourceFromUrl(lead.profileUrl);
   if (socialSource) return socialSource;
   if (lead.acquiredSource) return sourceLabels[lead.acquiredSource] ?? lead.acquiredSource;
   return '-';
 }
 
-export function sourceUrlFor(lead: Pick<LeadListItem, 'acquiredSource' | 'profileUrl'>) {
-  if (!lead.profileUrl || isOpenStreetMapUrl(lead.profileUrl)) return null;
+export function sourceUrlFor(lead: Pick<LeadListItem, 'acquiredSource' | 'profileUrl'> | null | undefined) {
+  if (!lead || !lead.profileUrl || typeof lead.profileUrl !== 'string' || isOpenStreetMapUrl(lead.profileUrl)) return null;
   return lead.profileUrl;
 }
 
-export function deterministicLeadScore(lead: Pick<LeadListItem, 'score' | 'scoringBreakdown'>) {
-  return lead.scoringBreakdown?.finalScore ?? lead.score;
+export function deterministicLeadScore(lead: Pick<LeadListItem, 'score' | 'scoringBreakdown'> | null | undefined) {
+  if (!lead) return null;
+  return lead.scoringBreakdown?.finalScore ?? (typeof lead.score === 'number' ? lead.score : null);
 }
 
 export function leadStarRating(lead: Pick<LeadListItem, 'score' | 'scoringBreakdown'>) {
@@ -99,12 +101,24 @@ export function websiteUrlFor(
 }
 
 export function whatsappTargetFor(
-  lead: Pick<LeadListItem, 'whatsappUrl' | 'whatsappNumber' | 'publicContact'>,
+  lead: Pick<LeadListItem, 'whatsappUrl' | 'whatsappNumber' | 'publicContact'> | null | undefined,
 ) {
-  const whatsappUrl = lead.whatsappUrl?.trim();
+  if (!lead) return null;
+  const whatsappUrl = typeof lead.whatsappUrl === 'string' ? lead.whatsappUrl.trim() : null;
   if (whatsappUrl) return whatsappUrl;
 
-  const digits = lead.whatsappNumber?.replace(/\D/g, '') ?? lead.publicContact?.replace(/\D/g, '');
+  const rawPhone = typeof lead.whatsappNumber === 'string'
+    ? lead.whatsappNumber
+    : typeof lead.whatsappNumber === 'number'
+    ? String(lead.whatsappNumber)
+    : typeof lead.publicContact === 'string'
+    ? lead.publicContact
+    : typeof lead.publicContact === 'number'
+    ? String(lead.publicContact)
+    : null;
+
+  if (!rawPhone) return null;
+  const digits = rawPhone.replace(/\D/g, '');
   if (!digits) return null;
 
   return `https://wa.me/${digits}`;

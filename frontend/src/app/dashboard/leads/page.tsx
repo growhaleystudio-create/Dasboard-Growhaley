@@ -464,7 +464,13 @@ export default function LeadsPage() {
   const teamId = sessionData?.session?.teamId || DEFAULT_ADMIN_SESSION.teamId || DEFAULT_TEAM_ID;
 
   // Query Leads
-  const { data: leadsData, isLoading: isLeadsLoading, isFetching: isLeadsFetching, error } = useQuery({
+  const {
+    data: leadsData,
+    isLoading: isLeadsLoading,
+    isFetching: isLeadsFetching,
+    error,
+    refetch: refetchLeads,
+  } = useQuery({
     queryKey: ['leads', teamId, debouncedSearch, statusFilter, ratingFilter, websiteFilter, aiStatusFilter, whatsappVerificationFilter, dateFrom, dateTo, page, pageSize],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -480,8 +486,9 @@ export default function LeadsPage() {
       params.append('pageSize', pageSize.toString());
       return fetchApi<PageResponse<LeadListItem>>(`/api/teams/${teamId}/leads?${params.toString()}`);
     },
-    enabled: true,
-    placeholderData: (previousData) => previousData,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     refetchInterval: selectedLead?.aiState === 'pending' ? 2000 : false,
   });
 
@@ -663,7 +670,7 @@ export default function LeadsPage() {
         method: 'POST',
       });
     },
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any) => {
       const newCount = data?.newLeads ?? 0;
       const dupCount = data?.duplicateLeads ?? 0;
       if (newCount > 0) {
@@ -685,8 +692,8 @@ export default function LeadsPage() {
       setDateTo('');
       setPage(0);
       setScrapeForm({ source: 'google', keywords: '', location: '' });
-      void queryClient.invalidateQueries({ queryKey: ['leads'] });
-      void queryClient.refetchQueries({ queryKey: ['leads'] });
+      await queryClient.invalidateQueries({ queryKey: ['leads'] });
+      await refetchLeads();
     },
     onError: (err: any) => {
       toast.error(err.message || 'Gagal menjalankan scraping');
@@ -726,31 +733,39 @@ export default function LeadsPage() {
 
   const formatDate = (value: Date | string | undefined) => {
     if (!value) return '-';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '-';
-    return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+    try {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '-';
+      return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+    } catch {
+      return '-';
+    }
   };
 
   const tableLeads: AlignLead[] = (leadsData?.items ?? []).map((lead) => {
-    const whatsappNumber = typeof lead.whatsappNumber === 'string' ? lead.whatsappNumber : null;
-    const matchedKeywords = Array.isArray(lead.matchedKeywords)
+    const whatsappNumber = typeof lead?.whatsappNumber === 'string'
+      ? lead.whatsappNumber
+      : (typeof lead?.whatsappNumber === 'number' ? String(lead.whatsappNumber) : null);
+    const matchedKeywords = Array.isArray(lead?.matchedKeywords)
       ? lead.matchedKeywords.join(', ')
-      : (typeof lead.matchedKeywords === 'string' ? lead.matchedKeywords : '');
+      : (typeof lead?.matchedKeywords === 'string' ? lead.matchedKeywords : '');
 
     return {
-      id: lead.id,
-      name: lead.name ?? 'Unknown',
-      contact: lead.publicContact ?? lead.whatsappNumber ?? 'No contact',
+      id: lead?.id ?? '',
+      name: lead?.name ?? 'Unknown',
+      contact: (typeof lead?.publicContact === 'string' && lead.publicContact.trim())
+        ? lead.publicContact
+        : (whatsappNumber ?? 'No contact'),
       whatsappUrl: whatsappTargetFor(lead),
       whatsappNumber,
-      whatsappVerificationStatus: lead.whatsappVerificationStatus || 'unchecked',
-      location: lead.location ?? 'Unknown location',
+      whatsappVerificationStatus: lead?.whatsappVerificationStatus || 'unchecked',
+      location: lead?.location ?? 'Unknown location',
       niche: matchedKeywords || 'General',
-      dateFound: formatDate(lead.discoveredAt ?? lead.createdAt),
+      dateFound: formatDate(lead?.discoveredAt ?? lead?.createdAt),
       sourceLabel: sourceLabelFor(lead),
       sourceUrl: sourceUrlFor(lead),
       websiteStatus: websiteStatusFor(lead),
-      status: lead.status || 'New',
+      status: lead?.status || 'New',
       score: deterministicLeadScore(lead),
     };
   });
@@ -1026,7 +1041,7 @@ export default function LeadsPage() {
           </div>
           <AlignLeadTable
             leads={tableLeads}
-            isLoading={isLeadsLoading && !leadsData}
+            isLoading={isLeadsLoading || (isLeadsFetching && (!leadsData || leadsData.items.length === 0))}
             error={error ? 'Failed to load leads' : undefined}
             onOpenLead={openLead}
             onOpenWhatsApp={(leadId) => {
