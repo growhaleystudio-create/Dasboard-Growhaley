@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.BACKEND_API_URL ||
-  'http://localhost:3000';
+import { getActiveBackendUrl } from '@/lib/tunnelResolver';
 
 async function handleProxy(
   request: NextRequest,
   { params }: { params: { path: string[] } }
 ) {
   const path = params.path.join('/');
-  const backendBase = BACKEND_URL.replace(/\/+$/, '');
+  const backendBase = (await getActiveBackendUrl()).replace(/\/+$/, '');
   const targetUrl = new URL(`${backendBase}/api/${path}`);
 
   // Forward query parameters

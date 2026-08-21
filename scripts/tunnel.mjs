@@ -1,4 +1,5 @@
 import ngrok from '@ngrok/ngrok';
+import { setTunnelUrl } from './setup-tunnel-sync.mjs';
 
 async function start() {
   const authtoken = process.env.NGROK_AUTHTOKEN || '3IBGsq9uEpuu4zpcb7xoJGGSf29_2x76XB6fqzRD9Zbhu7sRo';
@@ -8,10 +9,16 @@ async function start() {
       addr: 3000,
       authtoken,
     });
+    const url = listener.url();
     console.log(`\n======================================================`);
-    console.log(`🚀 NGROK TUNNEL AKTIF: ${listener.url()}`);
+    console.log(`🚀 NGROK TUNNEL AKTIF: ${url}`);
     console.log(`======================================================\n`);
-    console.log(`Silakan masukkan URL di atas ke Vercel NEXT_PUBLIC_API_URL\n`);
+
+    try {
+      await setTunnelUrl(url);
+    } catch (e) {
+      console.warn('Could not sync tunnel URL to Supabase:', e.message);
+    }
 
     // Keep process running indefinitely
     process.stdin.resume();
