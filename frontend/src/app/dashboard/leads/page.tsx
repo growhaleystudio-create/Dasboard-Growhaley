@@ -419,6 +419,7 @@ export default function LeadsPage() {
   
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [nicheFilter, setNicheFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [ratingFilter, setRatingFilter] = useState('All');
   const [websiteFilter, setWebsiteFilter] = useState('All');
@@ -463,6 +464,21 @@ export default function LeadsPage() {
   const DEFAULT_TEAM_ID = '2934a5c1-aaee-4d77-9314-22d587d9c636';
   const teamId = sessionData?.session?.teamId || DEFAULT_ADMIN_SESSION.teamId || DEFAULT_TEAM_ID;
 
+  // Query distinct niches
+  const { data: nichesData } = useQuery({
+    queryKey: ['lead-niches', teamId],
+    queryFn: async () => {
+      try {
+        const res = await fetchApi<{ niches: string[] }>(`/api/teams/${teamId}/leads/niches`);
+        return res?.niches ?? [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!teamId,
+    staleTime: 5000,
+  });
+
   // Query Leads
   const {
     data: leadsData,
@@ -471,10 +487,11 @@ export default function LeadsPage() {
     error,
     refetch: refetchLeads,
   } = useQuery({
-    queryKey: ['leads', teamId, debouncedSearch, statusFilter, ratingFilter, websiteFilter, aiStatusFilter, whatsappVerificationFilter, dateFrom, dateTo, page, pageSize],
+    queryKey: ['leads', teamId, debouncedSearch, nicheFilter, statusFilter, ratingFilter, websiteFilter, aiStatusFilter, whatsappVerificationFilter, dateFrom, dateTo, page, pageSize],
     queryFn: () => {
       const params = new URLSearchParams();
       if (debouncedSearch.trim()) params.append('search', debouncedSearch.trim());
+      if (nicheFilter !== 'All') params.append('niche', nicheFilter);
       if (statusFilter !== 'All') params.append('status', statusFilter);
       if (ratingFilter !== 'All') params.append('rating', ratingFilter);
       if (websiteFilter !== 'All') params.append('website', websiteFilter);
@@ -491,6 +508,34 @@ export default function LeadsPage() {
     refetchOnWindowFocus: true,
     refetchInterval: selectedLead?.aiState === 'pending' ? 2000 : false,
   });
+
+  const availableNiches = React.useMemo(() => {
+    const list: string[] = [];
+    const seen = new Set<string>();
+
+    const addNiche = (raw: string | undefined | null) => {
+      if (!raw) return;
+      const val = raw.trim();
+      if (!val) return;
+      const lower = val.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        list.push(val);
+      }
+    };
+
+    if (nichesData && Array.isArray(nichesData)) {
+      nichesData.forEach(addNiche);
+    }
+    if (leadsData?.items && Array.isArray(leadsData.items)) {
+      leadsData.items.forEach((lead) => {
+        if (Array.isArray(lead.matchedKeywords)) {
+          lead.matchedKeywords.forEach(addNiche);
+        }
+      });
+    }
+    return list;
+  }, [nichesData, leadsData?.items]);
 
   useEffect(() => {
     if (!selectedLead || !leadsData?.items) return;
@@ -639,6 +684,7 @@ export default function LeadsPage() {
       toast.success('Lead berhasil ditambahkan!');
       setIsNewLeadModalOpen(false);
       setManualForm({ name: '', whatsappNumber: '', location: '', niche: '', profileUrl: '', status: 'New' });
+      void queryClient.invalidateQueries({ queryKey: ['lead-niches'] });
       void queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
     onError: (err: any) => {
@@ -683,6 +729,7 @@ export default function LeadsPage() {
       setIsNewLeadModalOpen(false);
       setSearchInput('');
       setDebouncedSearch('');
+      setNicheFilter('All');
       setStatusFilter('All');
       setRatingFilter('All');
       setWebsiteFilter('All');
@@ -692,6 +739,7 @@ export default function LeadsPage() {
       setDateTo('');
       setPage(0);
       setScrapeForm({ source: 'google', keywords: '', location: '' });
+      await queryClient.invalidateQueries({ queryKey: ['lead-niches'] });
       await queryClient.invalidateQueries({ queryKey: ['leads'] });
       await refetchLeads();
     },
@@ -773,6 +821,7 @@ export default function LeadsPage() {
   const buildLeadParams = (exportAll = false) => {
     const params = new URLSearchParams();
     if (debouncedSearch) params.append('search', debouncedSearch);
+    if (nicheFilter !== 'All') params.append('niche', nicheFilter);
     if (statusFilter !== 'All') params.append('status', statusFilter);
     if (ratingFilter !== 'All') params.append('rating', ratingFilter);
     if (websiteFilter !== 'All') params.append('website', websiteFilter);
@@ -907,7 +956,21 @@ export default function LeadsPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 rounded-2xl border border-stroke-soft-200 bg-white p-4 shadow-none sm:grid-cols-2 xl:grid-cols-6">
+        <div className="grid gap-3 rounded-2xl border border-stroke-soft-200 bg-white p-4 shadow-none sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+          <Select
+            value={nicheFilter}
+            onChange={(event) => {
+              setNicheFilter(event.target.value);
+              setPage(0);
+            }}
+            options={[
+              { label: 'All Niches', value: 'All' },
+              ...availableNiches.map((niche) => ({
+                label: niche,
+                value: niche,
+              })),
+            ]}
+          />
           <Select
             value={statusFilter}
             onChange={(event) => {
@@ -979,7 +1042,6 @@ export default function LeadsPage() {
             ]}
           />
           <DatePicker
-
             value={dateFrom}
             placeholder="Start date"
             onChange={(nextValue) => {
@@ -996,6 +1058,61 @@ export default function LeadsPage() {
             }}
           />
         </div>
+
+        {/* Quick Niche Filter Pills */}
+        {availableNiches.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 px-1">
+            <span className="text-xs font-semibold text-text-soft-400 uppercase tracking-wider mr-1">
+              Niche Filter:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setNicheFilter('All');
+                setPage(0);
+              }}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-all cursor-pointer ${
+                nicheFilter === 'All'
+                  ? 'bg-primary-base text-white shadow-sm ring-2 ring-primary-base/20'
+                  : 'bg-bg-weak-50 text-text-sub-600 hover:bg-slate-200/70 border border-stroke-soft-200'
+              }`}
+            >
+              Semua ({leadsData?.total ?? 0})
+            </button>
+            {availableNiches.map((niche) => {
+              const isSelected = nicheFilter.toLowerCase() === niche.toLowerCase();
+              return (
+                <button
+                  key={niche}
+                  type="button"
+                  onClick={() => {
+                    setNicheFilter(isSelected ? 'All' : niche);
+                    setPage(0);
+                  }}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+                    isSelected
+                      ? 'bg-primary-base text-white shadow-sm ring-2 ring-primary-base/20'
+                      : 'bg-bg-weak-50 text-text-strong-950 hover:bg-slate-200/70 border border-stroke-soft-200'
+                  }`}
+                >
+                  <span>{niche}</span>
+                </button>
+              );
+            })}
+            {nicheFilter !== 'All' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setNicheFilter('All');
+                  setPage(0);
+                }}
+                className="text-xs text-text-soft-400 hover:text-text-strong-950 ml-1 underline cursor-pointer"
+              >
+                Reset Filter
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Table Area */}
         <div className="mt-2 flex flex-col gap-4">

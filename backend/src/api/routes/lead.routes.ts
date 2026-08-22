@@ -28,6 +28,7 @@ const CreateLeadSchema = z.object({
 
 const QuerySchema = z.object({
   search: z.string().optional(),
+  niche: z.union([z.string(), z.array(z.string())]).optional().transform(v => typeof v === 'string' ? [v] : v),
   status: z.union([LeadStatusSchema, z.array(LeadStatusSchema)]).optional().transform(v => typeof v === 'string' ? [v] : v),
   aiStatus: z.union([AiStatusSchema, z.array(AiStatusSchema)]).optional().transform(v => typeof v === 'string' ? [v] : v),
   whatsappVerification: z.union([WhatsAppVerificationStatusSchema, z.array(WhatsAppVerificationStatusSchema)]).optional().transform(v => typeof v === 'string' ? [v] : v),
@@ -66,6 +67,14 @@ function toThrowable(error: AppError): Error & AppError {
 // Fastify's plugin contract is async even though route registration itself is synchronous.
 // eslint-disable-next-line @typescript-eslint/require-await
 export const leadRoutes = (deps: LeadRoutesDeps): FastifyPluginAsync => async (fastify) => {
+  fastify.get('/niches', {
+    preHandler: [fastify.requireAuth, fastify.requireTeamId]
+  }, async (request, reply) => {
+    const params = request.params as { id: string };
+    const niches = await deps.query.listNiches(params.id);
+    return reply.status(200).send({ niches });
+  });
+
   fastify.get('/', {
     preHandler: [fastify.requireAuth, fastify.requireTeamId]
   }, async (request, reply) => {
@@ -80,6 +89,7 @@ export const leadRoutes = (deps: LeadRoutesDeps): FastifyPluginAsync => async (f
     // Convert to the exact LeadFilter shape
     const leadFilter: LeadFilter = {};
     if (filter.search !== undefined) leadFilter.search = filter.search;
+    if (filter.niche !== undefined) leadFilter.niches = filter.niche;
     const statuses = filter.status as LeadStatus[] | undefined;
     const aiStates = filter.aiStatus as AIState[] | undefined;
     const whatsappVerificationStatuses = filter.whatsappVerification as WhatsAppVerificationStatus[] | undefined;

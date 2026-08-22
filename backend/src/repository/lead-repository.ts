@@ -197,6 +197,24 @@ export class LeadRepository {
   }
 
   /**
+   * Return distinct business niches / matchedKeywords present across canonical
+   * Leads for a Team.
+   */
+  async listDistinctNiches(teamId: string): Promise<string[]> {
+    const rows = await query<{ niche: string }>(
+      this.db,
+      `SELECT DISTINCT unnest(matched_keywords) AS niche
+         FROM lead
+        WHERE team_id = $1
+          AND is_duplicate = false
+          AND matched_keywords IS NOT NULL
+        ORDER BY niche ASC`,
+      [teamId],
+    );
+    return rows.map((r) => r.niche).filter((n) => typeof n === 'string' && n.trim().length > 0);
+  }
+
+  /**
    * Insert a new Lead row scoped to `teamId`. The DB fills `id` and
    * `created_at` via defaults; any `id`/`createdAt` carried by `lead`
    * itself is ignored by virtue of being absent from {@link LeadInsert}.

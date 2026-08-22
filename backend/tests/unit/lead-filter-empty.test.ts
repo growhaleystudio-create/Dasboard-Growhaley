@@ -84,4 +84,50 @@ describe('LeadQueryService.list empty result (R9.6)', () => {
     expect(res.value.items).toEqual([]);
     expect(res.value.total).toBe(0);
   });
+
+  it('filters leads by niche and excludes non-matching leads', async () => {
+    const service = new LeadQueryService(
+      fakeRepo([
+        makeLead('l1', { name: 'Grand Hotel', matchedKeywords: ['Hotel', 'Hospitality'] }),
+        makeLead('l2', { name: 'Kopi Kenangan', matchedKeywords: ['Cafe', 'Coffee'] }),
+        makeLead('l3', { name: 'Boutique Villa', matchedKeywords: ['Hotel', 'Villa'] }),
+      ]),
+    );
+
+    const hotelFilter: LeadFilter = { niches: ['hotel'] };
+    const hotelRes = await service.list('team-1', hotelFilter, 0);
+
+    expect(hotelRes.ok).toBe(true);
+    if (!hotelRes.ok) return;
+    expect(hotelRes.value.items.map((i) => i.id)).toEqual(['l1', 'l3']);
+    expect(hotelRes.value.total).toBe(2);
+
+    const cafeFilter: LeadFilter = { niches: ['cafe'] };
+    const cafeRes = await service.list('team-1', cafeFilter, 0);
+
+    expect(cafeRes.ok).toBe(true);
+    if (!cafeRes.ok) return;
+    expect(cafeRes.value.items.map((i) => i.id)).toEqual(['l2']);
+    expect(cafeRes.value.total).toBe(1);
+
+    const emptyFilter: LeadFilter = { niches: ['dentist'] };
+    const emptyRes = await service.list('team-1', emptyFilter, 0);
+    expect(emptyRes.ok).toBe(true);
+    if (!emptyRes.ok) return;
+    expect(emptyRes.value.items).toEqual([]);
+    expect(emptyRes.value.total).toBe(0);
+  });
+
+  it('listNiches extracts distinct sorted niches from team leads', async () => {
+    const service = new LeadQueryService(
+      fakeRepo([
+        makeLead('l1', { matchedKeywords: ['Hotel', 'Hospitality'] }),
+        makeLead('l2', { matchedKeywords: ['Cafe', 'Coffee'] }),
+        makeLead('l3', { matchedKeywords: ['Hotel', 'Villa'] }),
+      ]),
+    );
+
+    const niches = await service.listNiches('team-1');
+    expect(niches).toEqual(['Cafe', 'Coffee', 'Hospitality', 'Hotel', 'Villa']);
+  });
 });

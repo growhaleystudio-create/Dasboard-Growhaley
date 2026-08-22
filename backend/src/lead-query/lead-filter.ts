@@ -59,6 +59,8 @@ export interface LeadFilter {
   scoreMin?: number;
   /** Inclusive upper bound of the Lead_Score range, 0..100 (R9.5). */
   scoreMax?: number;
+  /** Restrict by business niches / matchedKeywords. */
+  niches?: string[];
   /** Inclusive lower bound for discoveredAt. */
   discoveredFrom?: Date;
   /** Inclusive upper bound for discoveredAt. */
@@ -124,6 +126,10 @@ export function validateLeadFilter(f: LeadFilter): FilterValidation {
         `Kata kunci pencarian harus sepanjang ${SEARCH_MIN} sampai ${SEARCH_MAX} karakter setelah dipangkas.`,
       );
     }
+  }
+
+  if (f.niches !== undefined) {
+    normalized.niches = f.niches.map((n) => n.trim()).filter((n) => n.length > 0);
   }
 
   // --- R9.8: score-range bounds. ----------------------------------------
@@ -245,6 +251,18 @@ export function matchesFilter(lead: Lead, f: LeadFilter): boolean {
     !f.whatsappVerificationStatuses.includes(lead.whatsappVerificationStatus)
   ) {
     return false;
+  }
+
+  if (f.niches !== undefined && f.niches.length > 0) {
+    const leadKeywords = Array.isArray(lead.matchedKeywords) ? lead.matchedKeywords : [];
+    const matchesNiche = f.niches.some((targetNiche) => {
+      const target = targetNiche.trim().toLowerCase();
+      if (!target) return true;
+      return leadKeywords.some((kw) => kw.toLowerCase().includes(target) || target.includes(kw.toLowerCase()));
+    });
+    if (!matchesNiche) {
+      return false;
+    }
   }
 
   return true;

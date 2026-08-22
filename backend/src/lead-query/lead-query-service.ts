@@ -92,6 +92,30 @@ export class LeadQueryService {
   }
 
   /**
+   * Return distinct business niches / matchedKeywords present in the Team's Leads.
+   */
+  async listNiches(teamId: string): Promise<string[]> {
+    if (typeof this.leads.listDistinctNiches === 'function') {
+      return this.leads.listDistinctNiches(teamId);
+    }
+    const candidates = await this.leads.listForTeam(teamId, {
+      includeDuplicates: false,
+      limit: CANDIDATE_LOAD_LIMIT,
+      offset: 0,
+    });
+    const nicheSet = new Set<string>();
+    for (const lead of candidates) {
+      if (Array.isArray(lead.matchedKeywords)) {
+        for (const kw of lead.matchedKeywords) {
+          const trimmed = kw.trim();
+          if (trimmed) nicheSet.add(trimmed);
+        }
+      }
+    }
+    return Array.from(nicheSet).sort();
+  }
+
+  /**
    * Filtered + paginated Lead listing (R9.1–R9.8).
    *
    * Steps:
