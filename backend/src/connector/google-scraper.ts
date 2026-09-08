@@ -54,6 +54,45 @@ interface NominatimPlace {
 }
 
 const CATEGORY_FILTERS: Record<string, string[]> = {
+  // Venue & Events
+  gedung: ['["amenity"="events_venue"]', '["amenity"="community_centre"]', '["amenity"="conference_centre"]', '["leisure"="hall"]', '["building"="civic"]', '["building"="public"]'],
+  gedungserbaguna: ['["amenity"="events_venue"]', '["amenity"="community_centre"]', '["amenity"="conference_centre"]', '["leisure"="hall"]', '["building"="civic"]'],
+  venue: ['["amenity"="events_venue"]', '["amenity"="conference_centre"]', '["leisure"="hall"]'],
+  hall: ['["amenity"="events_venue"]', '["amenity"="conference_centre"]', '["leisure"="hall"]'],
+  convention: ['["amenity"="conference_centre"]', '["amenity"="events_venue"]'],
+  conventioncenter: ['["amenity"="conference_centre"]', '["amenity"="events_venue"]'],
+  ballroom: ['["amenity"="events_venue"]', '["amenity"="conference_centre"]'],
+  gedungpertemuan: ['["amenity"="events_venue"]', '["amenity"="community_centre"]', '["amenity"="conference_centre"]'],
+  graha: ['["amenity"="events_venue"]', '["amenity"="community_centre"]', '["building"="civic"]'],
+  auditorium: ['["amenity"="events_venue"]', '["amenity"="conference_centre"]', '["leisure"="hall"]'],
+  pertemuan: ['["amenity"="events_venue"]', '["amenity"="community_centre"]'],
+  serbaguna: ['["amenity"="events_venue"]', '["amenity"="community_centre"]'],
+  weddinghall: ['["amenity"="events_venue"]', '["leisure"="hall"]'],
+
+  // Photography & Studio
+  photography: ['["shop"="photo"]', '["craft"="photographer"]', '["amenity"="studio"]', '["office"="photographer"]'],
+  photographer: ['["craft"="photographer"]', '["shop"="photo"]', '["amenity"="studio"]'],
+  fotografi: ['["shop"="photo"]', '["craft"="photographer"]', '["amenity"="studio"]'],
+  fotografer: ['["craft"="photographer"]', '["shop"="photo"]', '["amenity"="studio"]'],
+  photo: ['["shop"="photo"]', '["craft"="photographer"]', '["amenity"="studio"]'],
+  foto: ['["shop"="photo"]', '["craft"="photographer"]', '["amenity"="studio"]'],
+  studiophoto: ['["shop"="photo"]', '["amenity"="studio"]'],
+  fotostudio: ['["shop"="photo"]', '["amenity"="studio"]'],
+  photostudio: ['["shop"="photo"]', '["amenity"="studio"]'],
+  videography: ['["amenity"="studio"]', '["craft"="photographer"]'],
+  videografer: ['["amenity"="studio"]', '["craft"="photographer"]'],
+
+  // Wedding & Event Organizing
+  wedding: ['["shop"="photo"]', '["amenity"="events_venue"]', '["shop"="beauty"]'],
+  weddingorganizer: ['["shop"="photo"]', '["amenity"="events_venue"]', '["office"="company"]'],
+  wo: ['["shop"="photo"]', '["amenity"="events_venue"]'],
+  eventorganizer: ['["amenity"="events_venue"]', '["office"="company"]'],
+  eo: ['["amenity"="events_venue"]', '["office"="company"]'],
+  dekorasi: ['["shop"="florist"]', '["amenity"="events_venue"]'],
+  mua: ['["shop"="beauty"]', '["shop"="hairdresser"]'],
+  makeup: ['["shop"="beauty"]', '["shop"="hairdresser"]'],
+
+  // Food, Beverage & Dining
   cafe: ['["amenity"="cafe"]'],
   coffee: ['["amenity"="cafe"]'],
   coffeeshop: ['["amenity"="cafe"]'],
@@ -64,9 +103,29 @@ const CATEGORY_FILTERS: Record<string, string[]> = {
   makanan: ['["amenity"="restaurant"]', '["amenity"="fast_food"]', '["amenity"="cafe"]'],
   rumahmakan: ['["amenity"="restaurant"]'],
   rumahmakansunda: ['["amenity"="restaurant"]'],
-  hotel: ['["tourism"="hotel"]', '["tourism"="guest_house"]'],
-  klinik: ['["amenity"="clinic"]', '["healthcare"="clinic"]'],
-  clinic: ['["amenity"="clinic"]', '["healthcare"="clinic"]'],
+  catering: ['["amenity"="restaurant"]', '["shop"="caterer"]', '["amenity"="fast_food"]'],
+  katering: ['["amenity"="restaurant"]', '["shop"="caterer"]'],
+  bakery: ['["shop"="bakery"]'],
+  kue: ['["shop"="bakery"]', '["shop"="pastry"]'],
+  roti: ['["shop"="bakery"]'],
+
+  // Hospitality & Stay
+  hotel: ['["tourism"="hotel"]', '["tourism"="guest_house"]', '["tourism"="hostel"]'],
+  villa: ['["tourism"="guest_house"]', '["tourism"="chalet"]', '["tourism"="hotel"]'],
+  resort: ['["tourism"="hotel"]', '["tourism"="resort"]'],
+  homestay: ['["tourism"="guest_house"]', '["tourism"="hostel"]'],
+  guesthouse: ['["tourism"="guest_house"]'],
+  kost: ['["tourism"="guest_house"]', '["building"="residential"]'],
+  kos: ['["tourism"="guest_house"]', '["building"="residential"]'],
+
+  // Health, Clinic & Medical
+  klinik: ['["amenity"="clinic"]', '["healthcare"="clinic"]', '["amenity"="doctors"]'],
+  clinic: ['["amenity"="clinic"]', '["healthcare"="clinic"]', '["amenity"="doctors"]'],
+  rumahsakit: ['["amenity"="hospital"]', '["healthcare"="hospital"]'],
+  hospital: ['["amenity"="hospital"]', '["healthcare"="hospital"]'],
+  doktergigi: ['["amenity"="dentist"]', '["healthcare"="dentist"]'],
+  klinikgigi: ['["amenity"="dentist"]', '["healthcare"="dentist"]'],
+  dentist: ['["amenity"="dentist"]', '["healthcare"="dentist"]'],
   dokterhewan: ['["amenity"="veterinary"]'],
   klinikhewan: ['["amenity"="veterinary"]'],
   veterinary: ['["amenity"="veterinary"]'],
@@ -74,22 +133,55 @@ const CATEGORY_FILTERS: Record<string, string[]> = {
   vet: ['["amenity"="veterinary"]'],
   apotek: ['["amenity"="pharmacy"]', '["shop"="chemist"]'],
   pharmacy: ['["amenity"="pharmacy"]', '["shop"="chemist"]'],
+
+  // Beauty, Wellness & Fitness
   salon: ['["shop"="hairdresser"]', '["shop"="beauty"]'],
   barber: ['["shop"="hairdresser"]'],
   barbershop: ['["shop"="hairdresser"]'],
-  bengkel: ['["shop"="car_repair"]'],
+  spa: ['["shop"="beauty"]', '["amenity"="spa"]', '["leisure"="sauna"]'],
+  gym: ['["leisure"="fitness_centre"]'],
+  fitness: ['["leisure"="fitness_centre"]'],
+
+  // Automotive & Services
+  bengkel: ['["shop"="car_repair"]', '["shop"="motorcycle_repair"]'],
+  bengkelmobil: ['["shop"="car_repair"]'],
+  bengkelmotor: ['["shop"="motorcycle_repair"]'],
+  carwash: ['["amenity"="car_wash"]'],
+  cucimobil: ['["amenity"="car_wash"]'],
+  cucimotor: ['["amenity"="car_wash"]'],
   cucisepatu: ['["shop"="shoe_repair"]', '["shop"="laundry"]'],
   sepatucleaning: ['["shop"="shoe_repair"]', '["shop"="laundry"]'],
   shoerepair: ['["shop"="shoe_repair"]'],
   laundry: ['["shop"="laundry"]'],
-  gym: ['["leisure"="fitness_centre"]'],
-  fitness: ['["leisure"="fitness_centre"]'],
-  spa: ['["shop"="beauty"]'],
+
+  // Education & Workspaces
+  bimbel: ['["amenity"="language_school"]', '["amenity"="training"]', '["amenity"="school"]'],
+  bimbinganbelajar: ['["amenity"="language_school"]', '["amenity"="training"]', '["amenity"="school"]'],
+  kursus: ['["amenity"="language_school"]', '["amenity"="training"]'],
+  coworking: ['["amenity"="coworking_space"]', '["office"="coworking"]'],
+  coworkingspace: ['["amenity"="coworking_space"]', '["office"="coworking"]'],
+
+  // Retail & Stores
   toko: ['["shop"]'],
   store: ['["shop"]'],
+  florist: ['["shop"="florist"]'],
+  tokobunga: ['["shop"="florist"]'],
+  percetakan: ['["shop"="copyshop"]', '["craft"="printer"]'],
+  printing: ['["shop"="copyshop"]', '["craft"="printer"]'],
 };
 
 const NOMINATIM_QUERY_ALIASES: Record<string, string[]> = {
+  gedungserbaguna: ['convention center', 'community centre', 'event venue', 'gedung pertemuan', 'graha', 'ballroom'],
+  gedung: ['convention center', 'community centre', 'event venue', 'gedung pertemuan'],
+  venue: ['event venue', 'convention center', 'wedding venue'],
+  hall: ['convention hall', 'community hall', 'ballroom'],
+  photography: ['photo studio', 'photographer', 'studio foto', 'fotografi'],
+  fotografi: ['photo studio', 'photographer', 'studio foto'],
+  photographer: ['photo studio', 'fotografer'],
+  wedding: ['wedding venue', 'wedding organizer', 'bridal'],
+  weddingorganizer: ['wedding planner', 'wedding organizer', 'event organizer'],
+  catering: ['caterer', 'catering service', 'jasa boga'],
+  katering: ['catering', 'caterer', 'jasa boga'],
   rumahmakansunda: ['sundanese restaurant', 'restaurant'],
   rumahmakan: ['restaurant'],
   restoran: ['restaurant'],
@@ -98,6 +190,25 @@ const NOMINATIM_QUERY_ALIASES: Record<string, string[]> = {
   sepatucleaning: ['laundry', 'shoe cleaning'],
   dokterhewan: ['veterinary clinic', 'animal clinic', 'pet clinic'],
   klinikhewan: ['veterinary clinic', 'animal clinic', 'pet clinic'],
+  doktergigi: ['dental clinic', 'dentist'],
+  klinikgigi: ['dental clinic', 'dentist'],
+  bimbel: ['tutoring service', 'learning center', 'kursus'],
+  coworking: ['coworking space', 'shared office'],
+};
+
+const SYNONYM_NAME_PATTERNS: Record<string, string> = {
+  gedungserbaguna: 'Gedung|Convention|Hall|Graha|Ballroom|Auditorium|Pertemuan|Serbaguna',
+  gedung: 'Gedung|Convention|Hall|Graha|Ballroom|Auditorium',
+  venue: 'Venue|Hall|Convention|Ballroom|Graha',
+  photography: 'Studio|Photo|Foto|Photography|Fotografi|Visual|Lensa|Creativ',
+  fotografi: 'Studio|Photo|Foto|Photography|Fotografi|Visual|Lensa',
+  photo: 'Studio|Photo|Foto|Photography|Fotografi',
+  wedding: 'Wedding|Organizer|Bridal|Pengantin|Dekorasi',
+  weddingorganizer: 'Wedding|Organizer|Planner|WO|EO',
+  catering: 'Catering|Katering|Boga|Kuliner',
+  katering: 'Catering|Katering|Boga',
+  bimbel: 'Bimbel|Bimbingan|Les|Privat|Kursus|Academy',
+  coworking: 'Coworking|Work|Hub|Space',
 };
 
 function normalizeKeyword(value: string): string {
@@ -152,17 +263,31 @@ function overpassClauses(keyword: string, scope: string): string[] {
     ...(CATEGORY_FILTERS[normalized] ?? []),
     ...tokenFilters,
   ]));
-  if (categoryFilters.length > 0) {
-    return categoryFilters.map((filter) => `nwr${scope}${filter};`);
-  }
+
+  const synonymPattern = SYNONYM_NAME_PATTERNS[normalized] ||
+    keyword
+      .split(/\s+/)
+      .map(normalizeKeyword)
+      .map((token) => SYNONYM_NAME_PATTERNS[token])
+      .filter(Boolean)[0];
 
   const escaped = escapeOverpassRegex(keyword);
-  return [
-    `nwr${scope}["name"~"${escaped}",i];`,
-    `nwr${scope}["brand"~"${escaped}",i];`,
-    `nwr${scope}["operator"~"${escaped}",i];`,
-    ...categoryFilters.map((filter) => `nwr${scope}${filter};`),
+  const regexPattern = synonymPattern ? `(${escaped}|${synonymPattern})` : escaped;
+
+  const nameClauses = [
+    `nwr${scope}["name"~"${regexPattern}",i];`,
+    `nwr${scope}["brand"~"${regexPattern}",i];`,
+    `nwr${scope}["operator"~"${regexPattern}",i];`,
   ];
+
+  if (categoryFilters.length > 0) {
+    return Array.from(new Set([
+      ...categoryFilters.map((filter) => `nwr${scope}${filter};`),
+      ...nameClauses,
+    ]));
+  }
+
+  return nameClauses;
 }
 
 function bboxScope(bbox: BoundingBox): string {

@@ -18,7 +18,9 @@
     "dev:backend": "concurrently -k -n backend-build,backend-api -c yellow,cyan \"npm run dev --workspace backend\" \"npm run dev:start --workspace backend\"",
     "dev:online": "concurrently -k -n backend-build,backend-api,tunnel -c yellow,cyan,magenta \"npm run dev --workspace backend\" \"npm run dev:start --workspace backend\" \"node scripts/tunnel.mjs\"",
     "dev:frontend": "npm run dev --workspace frontend",
-    "tunnel": "node scripts/tunnel.mjs"
+    "tunnel": "node scripts/tunnel.mjs",
+    "scrape:maps": "node scripts/scrape_maps.mjs",
+    "scrape:maps:py": "python scripts/scrape_maps.py"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "8.18.1",
@@ -26,6 +28,7 @@
     "concurrently": "9.2.1",
     "eslint": "8.57.1",
     "eslint-config-prettier": "9.1.0",
+    "playwright": "^1.63.0",
     "prettier": "3.4.2",
     "typescript": "5.7.2"
   },

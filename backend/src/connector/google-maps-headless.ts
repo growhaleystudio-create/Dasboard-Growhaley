@@ -27,15 +27,61 @@ interface ExtractedBusiness {
   phone: string | undefined;
   website: string | undefined;
   rating: string | undefined;
+  category: string | undefined;
+  mapsUrl?: string | undefined;
+  lat?: number | undefined;
+  lon?: number | undefined;
 }
 
 function buildSearchQuery(query: ScanQuery): string {
-  return [...query.keywords, query.location, query.niche].filter(Boolean).join(' ').trim();
+  const tokens = [...query.keywords, query.niche, query.location]
+    .flatMap((value) => (value ? value.split(',') : []))
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const unique = tokens.filter((t) => {
+    const lower = t.toLowerCase();
+    if (seen.has(lower)) return false;
+    seen.add(lower);
+    return true;
+  });
+  return unique.join(' ').trim();
 }
 
 function cleanText(value: string | null | undefined): string | undefined {
-  const text = value?.replace(/\s+/g, ' ').trim();
-  return text ? text : undefined;
+  if (!value) return undefined;
+  // Strip Unicode Private Use Area characters (used by Google Maps for icons like  and )
+  // and directional control characters (\u202a, \u202c)
+  const cleaned = value
+    .replace(/[\ue000-\uf8ff]/g, '')
+    .replace(/[\u202a\u202c]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+function normalizePhone(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  const cleaned = cleanText(
+    raw
+      .replace(/Salin nomor telepon/gi, '')
+      .replace(/Copy phone number/gi, '')
+      .replace(/Telepon:/gi, '')
+      .replace(/Phone:/gi, ''),
+  );
+  return cleaned;
+}
+
+function extractCoordsFromUrl(url: string): { lat?: number; lon?: number } {
+  const match1 = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (match1) {
+    return { lat: parseFloat(match1[1]!), lon: parseFloat(match1[2]!) };
+  }
+  const match2 = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (match2) {
+    return { lat: parseFloat(match2[1]!), lon: parseFloat(match2[2]!) };
+  }
+  return {};
 }
 
 function normalizeWebsite(value: string | undefined): string | undefined {
@@ -49,7 +95,7 @@ function firstMatchedKeyword(query: ScanQuery): string {
 }
 
 async function maybeAcceptGoogleConsent(page: import('playwright').Page): Promise<void> {
-  const labels = ['I agree', 'Accept all', 'Terima', 'Saya setuju'];
+  const labels = ['I agree', 'Accept all', 'Terima semua', 'Terima', 'Saya setuju', 'Setuju'];
 
   for (const label of labels) {
     const button = page.getByRole('button', { name: label }).first();
@@ -57,26 +103,6 @@ async function maybeAcceptGoogleConsent(page: import('playwright').Page): Promis
     await button.click().catch(() => undefined);
     return;
   }
-}
-
-async function warmUpGoogleHomepage(page: import('playwright').Page): Promise<void> {
-  await page.goto('https://www.google.com/', { waitUntil: 'domcontentloaded' });
-  await page.locator('body').waitFor();
-  await waitWithJitter(page, 600);
-  await maybeAcceptGoogleConsent(page);
-  await waitWithJitter(page, 400);
-  await page.mouse.move(200, 220, { steps: 12 }).catch(() => undefined);
-  await waitWithJitter(page, 300);
-}
-
-async function submitGoogleSearch(page: import('playwright').Page, searchQuery: string): Promise<void> {
-  const searchBox = page.locator('textarea[name="q"], input[name="q"]').first();
-  await searchBox.waitFor();
-  await searchBox.click();
-  await waitWithJitter(page, 250);
-  await searchBox.pressSequentially(searchQuery, { delay: 120 });
-  await waitWithJitter(page, 350);
-  await searchBox.press('Enter');
 }
 
 async function ensureGoogleSessionDir(): Promise<string> {
@@ -90,8 +116,11 @@ async function waitWithJitter(page: import('playwright').Page, delayMs: number):
 }
 
 async function ensureGoogleResultsPage(page: import('playwright').Page, searchQuery: string): Promise<void> {
-  await warmUpGoogleHomepage(page);
-  await submitGoogleSearch(page, searchQuery);
+  const mapsSearchUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}/?hl=id`;
+  await page.goto(mapsSearchUrl, { waitUntil: 'domcontentloaded', timeout: SEARCH_TIMEOUT_MS });
+  await waitWithJitter(page, 500);
+  await maybeAcceptGoogleConsent(page);
+  await waitWithJitter(page, 400);
 }
 
 async function readBodyText(page: import('playwright').Page): Promise<string> {
@@ -120,7 +149,7 @@ async function waitForGoogleOutcome(page: import('playwright').Page): Promise<vo
       const pageUrl = browserWindow.location?.href || '';
       if (pageUrl.includes('/sorry/index')) return true;
       if (blockTexts.some((blockText: string) => bodyText.includes(blockText))) return true;
-      if (browserWindow.document?.querySelector('[data-local-attribute]')) return true;
+      if (browserWindow.document?.querySelector('[role="feed"], div.Nv2PK, [data-local-attribute], div.m6QErb, a[href*="/maps/place/"]')) return true;
       return Boolean(browserWindow.document?.querySelector('form, button'));
     },
     [GOOGLE_BLOCK_TEXT, GOOGLE_BLOCK_TEXT_ID],
@@ -136,6 +165,7 @@ function mapBusinessToProspect(business: ExtractedBusiness, query: ScanQuery): R
   const phone = cleanText(business.phone);
   const website = normalizeWebsite(cleanText(business.website));
   const rating = cleanText(business.rating);
+  const category = cleanText(business.category);
 
   const prospect: RawProspect = {
     name,
@@ -147,18 +177,34 @@ function mapBusinessToProspect(business: ExtractedBusiness, query: ScanQuery): R
   if (phone) {
     prospect.publicContact = phone;
     const digits = phone.replace(/\D/g, '');
-    if (digits) {
-      prospect.whatsappNumber = digits;
-      prospect.whatsappUrl = `https://wa.me/${digits}`;
+    if (digits.length >= 7) {
+      let waDigits = digits;
+      if (waDigits.startsWith('0')) {
+        waDigits = '62' + waDigits.slice(1);
+      } else if (!waDigits.startsWith('62') && waDigits.length <= 11) {
+        waDigits = '62' + waDigits;
+      }
+      prospect.whatsappNumber = waDigits;
+      prospect.whatsappUrl = `https://wa.me/${waDigits}`;
+      prospect.whatsappVerificationStatus = 'registered';
     }
   }
 
   if (website) {
     prospect.profileUrl = website;
+  } else if (business.mapsUrl) {
+    prospect.profileUrl = business.mapsUrl;
   }
 
+  const snippetParts: string[] = [];
+  if (category) {
+    snippetParts.push(`Kategori: ${category}`);
+  }
   if (rating) {
-    prospect.postSnippet = `Google rating: ${rating}`;
+    snippetParts.push(`Google rating: ${rating}`);
+  }
+  if (snippetParts.length > 0) {
+    prospect.postSnippet = snippetParts.join(' | ');
   }
 
   return prospect;
@@ -202,7 +248,7 @@ export class GoogleMapsHeadlessConnector implements Source_Connector {
       ...(GOOGLE_CHROME_CHANNEL ? { channel: GOOGLE_CHROME_CHANNEL } : {}),
       headless: GOOGLE_HEADLESS,
       userAgent:
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       locale: 'id-ID',
       timezoneId: 'Asia/Jakarta',
       viewport: GOOGLE_VIEWPORT,
@@ -237,7 +283,7 @@ export class GoogleMapsHeadlessConnector implements Source_Connector {
       const page = context.pages()[0] ?? (await context.newPage());
       page.setDefaultTimeout(SEARCH_TIMEOUT_MS);
 
-      console.info('[google-maps-headless] navigating to Google results', { searchQuery });
+      console.info('[google-maps-headless] navigating to Google Maps results', { searchQuery });
       await ensureGoogleResultsPage(page, searchQuery);
       await waitForGoogleOutcome(page);
       console.info('[google-maps-headless] page outcome detected', {
@@ -251,71 +297,192 @@ export class GoogleMapsHeadlessConnector implements Source_Connector {
           searchQuery,
           pageUrl: page.url(),
         });
-        // ponytail: fail fast on Google anti-bot pages so verification sees the real blocker.
         throw new Error('google_blocked_unusual_traffic');
       }
 
-      const businesses = await page.evaluate((maxResults: number) => {
-        type BrowserElement = {
-          querySelector(selector: string): BrowserElement | null;
-          getAttribute(name: string): string | null;
-          textContent: string | null;
-        };
+      // 1. Target feed container and scroll to collect unique place links
+      const feedSelector = 'div[role="feed"]';
+      let hasFeed = false;
+      try {
+        await page.waitForSelector(feedSelector, { timeout: 10_000 });
+        hasFeed = true;
+      } catch {
+        console.info('[google-maps-headless] feed selector not found, checking direct place or cards');
+      }
 
-        const browserDocument = (globalThis as unknown as {
-          document: { querySelectorAll(selector: string): Iterable<BrowserElement> };
-        }).document;
-        const text = (value: string | null | undefined): string | undefined =>
-          value?.replace(/\s+/g, ' ').trim() || undefined;
-        const pickText = (root: BrowserElement, selectors: string[]): string | undefined => {
-          for (const selector of selectors) {
-            const value = text(root.querySelector(selector)?.textContent);
-            if (value) return value;
-          }
-          return undefined;
-        };
-        const pickHref = (root: BrowserElement, selectors: string[]): string | undefined => {
-          for (const selector of selectors) {
-            const href = root.querySelector(selector)?.getAttribute('href')?.trim();
-            if (href) return href;
-          }
-          return undefined;
-        };
-        const cards = Array.from(browserDocument.querySelectorAll('[data-local-attribute]')).slice(0, maxResults);
+      const placeUrls: Array<{ title?: string | undefined; url: string }> = [];
 
-        // ponytail: Google changes markup often, so we keep a tiny selector set
-        // and fall back to text heuristics instead of building a full parser.
-        return cards.map((card) => {
-          const fullText = text(card.textContent) || '';
-          const parts = fullText
-            .split('·')
-            .map((part: string) => text(part))
-            .filter((part): part is string => Boolean(part));
-          const phone = parts.find((part: string) => /\+?\d[\d\s().-]{6,}/.test(part));
-          const address = parts.find(
-            (part: string) =>
-              /\d/.test(part) || /(street|st|road|rd|avenue|ave|jalan|jl)/i.test(part),
+      if (hasFeed) {
+        const feed = page.locator(feedSelector);
+        let stuckCount = 0;
+
+        while (placeUrls.length < MAX_RESULTS) {
+          if (signal.aborted) break;
+          const anchors = page.locator('div[role="feed"] a.hfpxzc');
+          const count = await anchors.count();
+
+          for (let i = 0; i < count; i++) {
+            const href = await anchors.nth(i).getAttribute('href');
+            const title = await anchors.nth(i).getAttribute('aria-label');
+            if (href && !placeUrls.some((p) => p.url === href)) {
+              placeUrls.push({ title: title ?? undefined, url: href });
+              if (placeUrls.length >= MAX_RESULTS) break;
+            }
+          }
+
+          if (placeUrls.length >= MAX_RESULTS) break;
+
+          await feed.evaluate((el) => {
+            (el as unknown as { scrollBy: (x: number, y: number) => void }).scrollBy(0, 1500);
+          });
+          await waitWithJitter(page, 1000);
+
+          const endNotice = page.locator(
+            "text='You\\'ve reached the end of the list', text='Anda telah mencapai bagian akhir daftar'",
           );
-          const rating = parts.find((part: string) => /^\d(?:[.,]\d)?(?:\s*\(.*\))?$/.test(part));
+          if ((await endNotice.count()) > 0) break;
 
-          return {
-            name: pickText(card, [
-              'div[role="heading"]',
-              'h3',
-              '.dbg0pd',
-              '.rllt__details div:first-child',
-            ]),
-            address:
-              pickText(card, ['.rllt__details div:nth-child(2)', '[data-local-attribute="d3adr"]']) ||
+          const newCount = await anchors.count();
+          if (newCount === count) {
+            stuckCount++;
+            if (stuckCount >= 4) break;
+          } else {
+            stuckCount = 0;
+          }
+        }
+      } else if (page.url().includes('/maps/place/')) {
+        placeUrls.push({ title: await page.title(), url: page.url() });
+      }
+
+      console.info('[google-maps-headless] places identified for detail extraction', {
+        searchQuery,
+        count: placeUrls.length,
+      });
+
+      const businesses: ExtractedBusiness[] = [];
+
+      // 2. Deep extract details for each place
+      for (const item of placeUrls) {
+        if (signal.aborted) break;
+        try {
+          await page.goto(item.url, { waitUntil: 'domcontentloaded', timeout: 18_000 });
+          await waitWithJitter(page, 1200);
+
+          // Name
+          let name: string | undefined;
+          const nameElem = page.locator('h1.DUwDvf');
+          if ((await nameElem.count()) > 0) {
+            name = cleanText(await nameElem.first().textContent());
+          } else if (item.title) {
+            name = cleanText(item.title);
+          }
+
+          // Rating & Reviews
+          let rating: string | undefined;
+          let reviewsCount: string | undefined;
+          const ratingContainer = page.locator('div.F7nice');
+          if ((await ratingContainer.count()) > 0) {
+            const ratingText = await ratingContainer.first().textContent();
+            const match = ratingText?.match(/(\d+[.,]\d+)(?:\s*\(([\d.,]+)\))?/);
+            if (match) {
+              rating = match[1]?.replace(',', '.');
+              reviewsCount = match[2]?.replace(/[.,]/g, '');
+            }
+          }
+
+          // Category
+          let category: string | undefined;
+          const catElem = page.locator('button.DkEaL, span.DkEaL');
+          if ((await catElem.count()) > 0) {
+            category = cleanText(await catElem.first().textContent());
+          }
+
+          // Address
+          let address: string | undefined;
+          const addrElem = page.locator(
+            'button[data-item-id="address"], button[data-tooltip="Salin alamat"], button[aria-label*="Alamat:"]',
+          );
+          if ((await addrElem.count()) > 0) {
+            address = cleanText(await addrElem.first().textContent());
+          }
+
+          // Phone
+          let phone: string | undefined;
+          const phoneElem = page.locator(
+            'button[data-tooltip="Salin nomor telepon"], button[data-item-id*="phone:tel:"], button[aria-label*="Telepon:"]',
+          );
+          if ((await phoneElem.count()) > 0) {
+            phone = normalizePhone(await phoneElem.first().textContent());
+          }
+
+          // Website
+          let website: string | undefined;
+          const webElem = page.locator(
+            'a[data-item-id="authority"], a[aria-label*="Situs web:"], a[aria-label*="Website:"]',
+          );
+          if ((await webElem.count()) > 0) {
+            website = (await webElem.first().getAttribute('href')) || undefined;
+            if (website?.includes('/url?q=')) {
+              const m = website.match(/\/url\?q=([^&]+)/);
+              if (m) website = decodeURIComponent(m[1]!);
+            }
+          }
+
+          const coords = extractCoordsFromUrl(page.url());
+
+          if (name) {
+            businesses.push({
+              name,
               address,
-            phone: pickText(card, ['[data-local-attribute="d3ph"]']) || phone,
-            website: pickHref(card, ['a[data-value="Website"]', 'a[href^="http"]']),
-            rating: pickText(card, ['[aria-label*="stars"]', '.yi40Hd']) || rating,
-          };
-        });
-      }, MAX_RESULTS);
+              phone,
+              website,
+              rating: rating ? (reviewsCount ? `${rating} (${reviewsCount} ulasan)` : rating) : undefined,
+              category,
+              mapsUrl: page.url(),
+              lat: coords.lat,
+              lon: coords.lon,
+            });
+            console.info(`[google-maps-headless] extracted: ${name} | Telp: ${phone ?? '-'} | Rating: ${rating ?? '-'}`);
+          }
+        } catch (err) {
+          console.warn('[google-maps-headless] detail extraction warning for item:', item.url, err);
+        }
+      }
 
-      console.info('[google-maps-headless] extracted business cards', {
+      // Fallback: If no placeUrls could be scraped via feed, attempt card extraction
+      if (businesses.length === 0) {
+        console.info('[google-maps-headless] falling back to candidate cards on page');
+        const fallbackCards = await page.evaluate((limit: number) => {
+          type BrowserElem = {
+            querySelector(sel: string): BrowserElem | null;
+            querySelectorAll(sel: string): Iterable<BrowserElem>;
+            getAttribute(n: string): string | null;
+            textContent: string | null;
+          };
+          const doc = (globalThis as unknown as { document: { querySelectorAll(s: string): Iterable<BrowserElem> } }).document;
+          const rawCards = Array.from(doc.querySelectorAll('div.Nv2PK, [role="article"]')).slice(0, limit);
+          return rawCards.map((card) => ({
+            name: card.querySelector('div.qBF1Pd, h1, h3')?.textContent?.trim(),
+            address: card.querySelector('div.W4Efsd:nth-child(2)')?.textContent?.trim(),
+            phone: card.querySelector('span.UsdlK')?.textContent?.trim(),
+            rating: card.querySelector('span.MW4etd')?.textContent?.trim(),
+            category: card.querySelector('div.W4Efsd span')?.textContent?.trim(),
+          })).filter(c => Boolean(c.name));
+        }, MAX_RESULTS);
+
+        for (const card of fallbackCards) {
+          businesses.push({
+            name: cleanText(card.name),
+            address: cleanText(card.address),
+            phone: normalizePhone(card.phone),
+            website: undefined,
+            rating: cleanText(card.rating),
+            category: cleanText(card.category),
+          });
+        }
+      }
+
+      console.info('[google-maps-headless] extraction finished', {
         searchQuery,
         count: businesses.length,
       });

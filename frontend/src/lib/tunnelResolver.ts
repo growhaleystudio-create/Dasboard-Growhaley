@@ -23,6 +23,19 @@ function getPool() {
 }
 
 export async function getActiveBackendUrl(): Promise<string> {
+  // If explicitly specified in environment, prioritize it
+  if (process.env.BACKEND_API_URL) {
+    return process.env.BACKEND_API_URL.replace(/\/+$/, '');
+  }
+  if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.startsWith('/')) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+  }
+
+  // In local development, always connect directly to the local backend on port 3000
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:3000';
+  }
+
   const now = Date.now();
   if (cachedUrl && now - lastFetched < CACHE_TTL_MS) {
     return cachedUrl;
@@ -43,6 +56,6 @@ export async function getActiveBackendUrl(): Promise<string> {
   return (
     process.env.NEXT_PUBLIC_API_URL ||
     process.env.BACKEND_API_URL ||
-    'https://petunia-emoticon-appease.ngrok-free.dev'
+    'http://localhost:3000'
   ).replace(/\/+$/, '');
 }

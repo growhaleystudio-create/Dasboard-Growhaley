@@ -1,10 +1,29 @@
-const NAME_SELECTORS = ['div[role="heading"]', 'h3', '.dbg0pd', '.rllt__details div:first-child'];
-const ADDRESS_SELECTORS = ['.rllt__details div:nth-child(2)', '[data-local-attribute="d3adr"]'];
-const PHONE_SELECTORS = ['[data-local-attribute="d3ph"]'];
+const NAME_SELECTORS = [
+    'div.qBF1Pd',
+    'div[role="heading"]',
+    'h3',
+    '.dbg0pd',
+    '.rllt__details div:first-child',
+];
+const ADDRESS_SELECTORS = [
+    'div.W4Efsd:nth-child(2)',
+    '.rllt__details div:nth-child(2)',
+    '[data-local-attribute="d3adr"]',
+    'button[data-item-id="address"]',
+];
+const PHONE_SELECTORS = [
+    'span.UsdlK',
+    '[data-local-attribute="d3ph"]',
+    'button[data-item-id*="phone"]',
+];
 function clean(value) {
     if (typeof value !== 'string')
         return '';
-    return value.replace(/\s+/g, ' ').trim();
+    return value
+        .replace(/[\ue000-\uf8ff]/g, '')
+        .replace(/[\u202a\u202c]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 function pick(root, selectors) {
     for (const selector of selectors) {
@@ -18,16 +37,13 @@ function pick(root, selectors) {
 function pickHref(root, selectors) {
     for (const selector of selectors) {
         const href = root.querySelector(selector)?.getAttribute('href')?.trim();
-        if (href)
+        if (href && !href.includes('google.com/maps') && !href.startsWith('/maps/'))
             return href;
     }
     return '';
 }
-// Anchored phone pattern: starts with +/digit, only phone chars, bounded length.
-// Google Maps often merges phone+address+hours into a single "·" segment, so a
-// loose regex would pick up the whole blob and break the 100-char backend cap.
 const PHONE_PART_RE = /^\+?[\d][\d\s().-]{5,30}$/;
-const PHONE_MAX_LEN = 30; // E.164 + separators fit comfortably; longer is a mis-merged blob
+const PHONE_MAX_LEN = 30;
 function normalizePhone(value) {
     if (!value)
         return '';
@@ -36,7 +52,15 @@ function normalizePhone(value) {
 export function extractItems(limit = 20) {
     if (typeof document === 'undefined')
         return [];
-    const cards = Array.from(document.querySelectorAll('[data-local-attribute]')).slice(0, limit);
+    const candidateSelectors = ['div.Nv2PK', 'div[role="article"]', '[data-local-attribute]'];
+    let rawCards = [];
+    for (const sel of candidateSelectors) {
+        const found = Array.from(document.querySelectorAll(sel));
+        if (found.length > rawCards.length) {
+            rawCards = found;
+        }
+    }
+    const cards = rawCards.slice(0, limit);
     if (cards.length === 0)
         return [];
     return cards
@@ -50,11 +74,17 @@ export function extractItems(limit = 20) {
         const address = parts.find((part) => /\d/.test(part) || /(street|st\b|road|rd\b|avenue|ave\b|jalan|jl\b)/i.test(part)) ?? '';
         const phoneFromSelector = pick(card, PHONE_SELECTORS);
         const phone = normalizePhone(phoneFromSelector) || normalizePhone(phoneFromParts);
+        const nameFromAnchor = card.querySelector('a.hfpxzc')?.getAttribute('aria-label') || '';
         return {
-            name: pick(card, NAME_SELECTORS),
-            address: pick(card, ADDRESS_SELECTORS) || address,
+            name: clean(pick(card, NAME_SELECTORS) || nameFromAnchor),
+            address: clean(pick(card, ADDRESS_SELECTORS) || address),
             phone,
-            website: pickHref(card, ['a[data-value="Website"]', 'a[href^="http"]']),
+            website: pickHref(card, [
+                'a[data-value="Website"]',
+                'a[aria-label*="Website"]',
+                'a[aria-label*="Situs"]',
+                'a[href^="http"]:not([href*="google.com"])',
+            ]),
         };
     })
         .filter((item) => item.name);
